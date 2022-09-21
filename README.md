@@ -37,6 +37,6 @@ The class contains 3 main functions:
         Input: port => int or str (1..6)
         Disconnects the RF input (1..6) to the common terminal
 
-- read_switch_state(port) 
+- read_switch_state() 
 
         returns: switch states => dictionary containing the state of each switch (1..6) 
