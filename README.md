@@ -40,6 +40,3 @@ The class contains 3 main functions:
 - read_switch_state(port) 
 
         returns: switch states => dictionary containing the state of each switch (1..6) 
-
-
-## Physical connections
