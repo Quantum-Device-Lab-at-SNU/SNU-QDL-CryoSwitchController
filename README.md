@@ -1,7 +1,13 @@
 # Radiall Switch Controller
 
 ## Project structure
-
+The repository consists of 6 files, these are:
+- LabJack.exe : Installation file for LabJack drivers and related software.
+- QphoX_CryoSwitch_Controller_Datasheet : Datasheet for the QphoX CryoSwitch Controller.
+- Readme.md : This file.
+- installation_guide.pdf : Installaton guide related to this repository and interface with the Labjack / Switch controller.
+- radiall_switch_controller.py : Python library for controlling the QphoX CryoSwitch through the Labjack, see **Library Usage** below.
+- cmd_radiall_switch_controller.py : A basic implementation of the radiall_switch_controller.py library. It enables the user to control the CryoSwitch Controller through the command line. Please refer to **installation_guide.pdf** for further information.
 
 
 ## Getting started
