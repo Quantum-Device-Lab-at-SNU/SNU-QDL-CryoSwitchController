@@ -92,7 +92,7 @@ class radiall_switch_controller:
                     print(str(switch) + ' ----' + chr(0x2524))
             else:
                 print(str(switch) + ' -  -' + chr(0x2502))
-        print('      ' + chr(0x2514) + '- IN')
+        print('      ' + chr(0x2514) + '- COM')
         print('')
 
 

@@ -26,6 +26,7 @@ controller.debug = False
 print('Ready')
 
 while (True):
+    print('->', end='')
     in_val = input()
     command = in_val.split(' ')
 
