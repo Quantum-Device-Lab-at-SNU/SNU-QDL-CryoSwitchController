@@ -1,4 +1,4 @@
-# Radial Switch Controller
+# Radiall Switch Controller
 
 ## Project structure
 
@@ -21,7 +21,7 @@ For more details, please visit the Labjack-python [Support Page](https://labjack
 
 ## Library Usage
 
-The radial_switch_controller class is an easy way of interfacing between the QP-CryoSwitch Controller and the Labjack T4.
+The radiall_switch_controller class is an easy way of interfacing between the QP-CryoSwitch Controller and the Labjack T4.
 
 **_NOTE:_** Since the Radiall switch [R583423141](https://www.radiall.com/cryogenic-sp6t-ramses-sma-18ghz-latching-28vdc-d-sub-male-connector-bipolar-actuator-command-r583423141.html) has a latching actuator, it's important to start the program with the switches in a known state. By default, the program assumes all actuators are in open or disconnected state.
 
