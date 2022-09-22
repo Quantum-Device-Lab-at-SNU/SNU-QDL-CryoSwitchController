@@ -12,13 +12,13 @@ The repository consists of 6 files, these are:
 
 ## Getting started
 
-This repository holds the QP-CryoSwitch Controller commpatible software. It is designed to be used with the QP-CryoSwitch Controller and Labjack T4.
+This repository holds the QP-CryoSwitch Controller compatible software. It is designed to be used with the QP-CryoSwitch Controller and Labjack T4.
 
 
 ## Installation
 - First, install the [LJM](https://labjack.com/support/software/installers/ljm) labjack software on your computer. A copy is saved 
 
-- Second, install the python "labjack-ljm" package. You can do so by running the folowing pip command:
+- Second, install the python "labjack-ljm" package. You can do so by running the following pip command:
 
 ```
 pip install labjack-ljm 
@@ -29,7 +29,7 @@ For more details, please visit the Labjack-python [Support Page](https://labjack
 
 The radiall_switch_controller class is an easy way of interfacing between the QP-CryoSwitch Controller and the Labjack T4.
 
-**_NOTE:_** Since the Radiall switch [R583423141](https://www.radiall.com/cryogenic-sp6t-ramses-sma-18ghz-latching-28vdc-d-sub-male-connector-bipolar-actuator-command-r583423141.html) has a latching actuator, it's important to start the program with the switches in a known state. By default, the program assumes all actuators are in open or disconnected state.
+**_NOTE:_** Since the Radiall switch [R583423141](https://www.radiall.com/cryogenic-sp6t-ramses-sma-18ghz-latching-28vdc-d-sub-male-connector-bipolar-actuator-command-r583423141.html) has a latching actuator, it's important to start the program with the switches in a known state. By default, the program assumes all actuators are in an open or disconnected state.
 
 
 The class contains 3 main functions:
@@ -46,3 +46,8 @@ The class contains 3 main functions:
 - read_switch_state() 
 
         returns: switch states => dictionary containing the state of each switch (1..6) 
+
+
+## cmd_radiall_switch_controller.py implementation
+The cmd_radiall_switch_controller.py shows a simple implementation of the library. 
+Please refer to the installation guide for more details.
