@@ -16,7 +16,7 @@ This repository holds the QP-CryoSwitch Controller compatible software. It is de
 
 
 ## Installation
-- First, install the [LJM](https://labjack.com/support/software/installers/ljm) labjack software on your computer. A copy is saved 
+- First, install the [LJM](https://labjack.com/support/software/installers/ljm) labjack software on your computer. A copy is also included in this repo.
 
 - Second, install the python "labjack-ljm" package. You can do so by running the following pip command:
 
