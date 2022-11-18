@@ -39,13 +39,17 @@ class radiall_switch_controller:
 
     def connect_switch_port(self, port):
         port = int(port)
-        self.check_before_switching(port)
-        self._do_switch_raw(port, 1)
+        if self.check_before_switching(port):
+            self._do_switch_raw(port, 1)
+        else:
+            pass
 
     def disconnect_switch_port(self, port):
         port = int(port)
-        self.check_before_switching(port)
-        self._do_switch_raw(port, 0)
+        if self.check_before_switching(port):
+            self._do_switch_raw(port, 0)
+        else:
+            pass
 
     def read_switch_state(self, fig=False):
         switch_state = {}
@@ -58,18 +62,19 @@ class radiall_switch_controller:
 
     def check_before_switching(self, port):
         if port < 1 or port > 6:
-            raise ValueError(f'ERROR: Port number must be between 1-6, not {port}')
+            print(f'ERROR: Port number must be between 1-6, not {port}')
+            return False
         cur_time = time.time()
         if cur_time - self.last_switch_time < self.minimum_time_between_switches:
-            raise Exception(
-                f'ERROR: Time since last switch ({cur_time - self.last_switch_time:.1f} s) is less than minimum_time_between_switches ({self.minimum_time_between_switches:.0f} s)')
+            print(f'ERROR: Time since last switch ({cur_time - self.last_switch_time:.1f} s) is less than minimum_time_between_switches ({self.minimum_time_between_switches:.0f} s)')
+            return False
+        return True
 
     def _do_switch_raw(self, port, val):
         lj_pin_name = self.lj_pinnames['line_' + str(port)]
         cur_pin_val = int(self.lj.read_dio_state(lj_pin_name))
         if cur_pin_val == val:
-            raise Exception(
-                'Current labjack pin value is same as target value, i.e the switch is already in target state, or there is a labjack vs swich state mismatch')
+            print('Current labjack pin value is same as target value, i.e the switch is already in target state, or there is a labjack vs swich state mismatch')
 
         if self.debug:
             print(f'Current lj pin {lj_pin_name} value = {cur_pin_val}, switching it to {val}')
