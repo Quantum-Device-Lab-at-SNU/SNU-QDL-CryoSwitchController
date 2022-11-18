@@ -15,7 +15,7 @@ class radiall_switch_controller:
         if labjack_instrument:
             self.lj = labjack_instrument
         else:
-            self.lj = LJ(device='T4', connection='USB')
+            self.lj = LJ(device='T7', connection='USB')
 
         if labjack_pinnames:
             self.lj = labjack_pinnames
@@ -74,16 +74,17 @@ class radiall_switch_controller:
         lj_pin_name = self.lj_pinnames['line_' + str(port)]
         cur_pin_val = int(self.lj.read_dio_state(lj_pin_name))
         if cur_pin_val == val:
-            print('Current labjack pin value is same as target value, i.e the switch is already in target state, or there is a labjack vs swich state mismatch')
+            print('WARNING: Current labjack pin value is same as target value, i.e the switch is already in target state, or there is a labjack vs swich state mismatch')
 
-        if self.debug:
-            print(f'Current lj pin {lj_pin_name} value = {cur_pin_val}, switching it to {val}')
+        else:
+            if self.debug:
+                print(f'Current lj pin {lj_pin_name} value = {cur_pin_val}, switching it to {val}')
 
-        print('Switching now')
-        self.lj.write_name(lj_pin_name, val)
-        self.last_switch_time = time.time()
-        print('Switching done')
-        print('')
+            print('Switching now')
+            self.lj.write_name(lj_pin_name, val)
+            self.last_switch_time = time.time()
+            print('Switching done')
+            print('')
 
     def print_switch_state(self, sw_state):
         print('')
