@@ -14,8 +14,6 @@ class Cryoswitch:
 
         self.labphox = Labphox(self.port, debug=self.debug)
         self.wait_time = 0.5
-
-
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = None
         self.decimals = 2
@@ -288,6 +286,7 @@ class Cryoswitch:
 
         self.enable_output_channels()
         self.enable_converter()
+        self.set_output_voltage(5)
 
         time.sleep(0.5)
         if not self.get_power_status():
@@ -298,35 +297,10 @@ class Cryoswitch:
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch(debug=True)
-
-
-    #switch.labphox.write(b'R:7:B:;')
-
-    switch.init()
-    switch.set_OCP_mA(80)
-    switch.enable_chopping()
+    switch = Cryoswitch() ## -> CryoSwitch class declaration
+    switch.init() ## -> Initialization
+    switch.plot = False
     switch.set_output_voltage(5)
 
-
-
+    switch.connect('A', 1)
     switch.disconnect('A', 1)
-
-
-    # switch.sweep_output_supervisor_T(90, 110)
-    # switch.set_DCDC_V(20)
-    #
-    #
-    #
-    #
-    #
-    #
-    # switch.enable_output_channels()
-    # switch.set_pulse_duration_ms(20)
-    #
-    #
-    # switch.labphox.IO_expander_cmd('connect', 'A', 6)
-    # switch.connect('A', 1)
-    #
-    #
-

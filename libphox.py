@@ -12,7 +12,7 @@ class Labphox:
     self.debug = debug
     self.port = port
     self.time_out = 10
-    self.log = True
+    self.log = False
 
     self.adc_ref = 3.3
     self.N_channel = 0
@@ -33,7 +33,7 @@ class Labphox:
             self.board_info = ''
             self.board_SN = None
             self.utility_cmd('info')
-            print('Connected to LabPHOX', ', PID:', str(self.PID) + ',', self.board_SN)
+            print('Connected to LabPHOX', ', PID:', str(self.PID) + ',', self.board_SN, ', channels:' + str(self.N_channel))
           except:
             print('ERROR: Couldn\'t connect')
 
@@ -349,6 +349,25 @@ class Labphox:
       self.write(b'W:7:B:;')
       response = self.parse_response()
 
+  def logging(self, list_name, cmd):
+    with open('history.json', "r") as history_file:
+      data = json.load(history_file)
+
+    if type(cmd) == str:
+      data_to_append = cmd
+    elif type(cmd) == bytes:
+      data_to_append = cmd.decode()
+
+    if list_name in data.keys():
+      data[list_name].append({'data': data_to_append, 'date': time.time()})
+    else:
+      data[list_name] = [{'data': data_to_append, 'date': time.time()}]
+
+
+    with open('history.json', "w") as file:
+      json.dump(data, file)
+
+
   def EEPROM_cmd(self, cmd, value=0):
     if self.compare_cmd(cmd, 'read'):
       self.write(b'W:9:R:' + self.encode(value) + b';')
@@ -370,38 +389,9 @@ class Labphox:
       self.write(b'W:9:C:' + self.encode(value) + b';')
       response = self.parse_response()
 
-  def logging(self, list_name, cmd):
-    with open('history.json', "r") as history_file:
-      data = json.load(history_file)
-
-    if type(cmd) == str:
-      data_to_append = cmd
-    elif type(cmd) == bytes:
-      data_to_append = cmd.decode()
-
-    if list_name in data.keys():
-      data[list_name].append({'data': data_to_append, 'date': time.time()})
-    else:
-      data[list_name] = [{'data': data_to_append, 'date': time.time()}]
-
-
-    with open('history.json', "w") as file:
-      json.dump(data, file)
 
 if __name__ == "__main__":
 
   cryoswitch = Labphox()
 
 
-
-  current_data = cryoswitch.application_cmd('pulse')
-
-  cryoswitch.timer_cmd('duration', 1002)
-  cryoswitch.DAC_cmd('on')
-  cryoswitch.DAC_cmd('set', 1000)
-  cryoswitch.application_cmd('pulse', 1)
-
-  cryoswitch.ADC_cmd('select', 11)
-  time.sleep(1)
-  print(cryoswitch.ADC_cmd('get'))
-  print()
