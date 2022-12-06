@@ -276,6 +276,7 @@ class Cryoswitch:
 
 
     def init(self):
+        print('Initialization...')
         self.labphox.ADC_cmd('start')
 
         self.enable_3V3()

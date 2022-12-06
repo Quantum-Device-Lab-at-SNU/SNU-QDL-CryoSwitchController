@@ -33,7 +33,7 @@ class Labphox:
             self.board_info = ''
             self.board_SN = None
             self.utility_cmd('info')
-            print('Connected to LabPHOX', ', PID:', str(self.PID) + ',', self.board_SN, ', channels:' + str(self.N_channel))
+            print('Connected to CryoSwitch', ', PID:', str(self.PID) + ',', self.board_SN, ', channels:' + str(self.N_channel))
           except:
             print('ERROR: Couldn\'t connect')
 
