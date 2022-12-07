@@ -76,16 +76,19 @@ class Cryoswitch:
     def get_HW_revision(self):
         pass
 
-    def enable_negative_supply(self):
+    def enable_negative_supply(self, verbose=False):
         self.labphox.gpio_cmd('EN_CHGP', 1)
         time.sleep(2)
-        return self.check_voltage(self.get_bias_voltage(), -5, tolerance=0.1, pre_str='BIAS:')
+        bias_voltage = self.get_bias_voltage()
+        if verbose:
+            self.check_voltage(bias_voltage -5, tolerance=0.1, pre_str='BIAS:')
+        return bias_voltage
 
     def disable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 0)
 
 
-    def set_output_voltage(self, Vout):
+    def set_output_voltage(self, Vout, verbose=False):
         if Vout <= 28 and Vout >= 5:
             self.converter_voltage = Vout
             if Vout > 10:
@@ -110,7 +113,8 @@ class Cryoswitch:
                 measured_voltage = self.get_converter_voltage()
                 tolerance = 0.1
                 time.sleep(0.5)
-                self.check_voltage(measured_voltage, Vout, tolerance=0.1, pre_str='CONVERTER:')
+                if verbose:
+                    self.check_voltage(measured_voltage, Vout, tolerance=0.1, pre_str='CONVERTER:')
                 return measured_voltage
 
         else:
@@ -135,11 +139,11 @@ class Cryoswitch:
 
         self.labphox.gpio_cmd('PWR_EN', 0)
 
-    def enable_OCP(self, enable=1):
+    def enable_OCP(self):
         self.labphox.DAC_cmd('set', DAC=2, value=1500)
 
         self.labphox.DAC_cmd('on', DAC=2)
-        self.set_OCP_mA(150)
+        self.set_OCP_mA(100)
 
     def reset_OCP(self):
         self.labphox.gpio_cmd('CHOPPING_EN', 1)
@@ -275,7 +279,7 @@ class Cryoswitch:
 
 
 
-    def init(self):
+    def start(self):
         print('Initialization...')
         self.labphox.ADC_cmd('start')
 
@@ -283,7 +287,6 @@ class Cryoswitch:
         self.enable_5V()
         self.enable_OCP()
         self.disable_chopping()
-        self.set_OCP_mA(100)
 
         self.enable_output_channels()
         self.enable_converter()
@@ -292,16 +295,18 @@ class Cryoswitch:
         time.sleep(0.5)
         if not self.get_power_status():
             print('PWR_STAT: Output not enabled')
+        else:
+            print('Ready')
 
 
 
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch() ## -> CryoSwitch class declaration
-    switch.init() ## -> Initialization
-    switch.plot = False
-    switch.set_output_voltage(5)
+    switch = Cryoswitch() ## -> CryoSwitch class declaration and USB connection
+    switch.start() ## -> Initialization of the internal hardware
+    switch.plot = False ## -> Disable the current plotting function
+    switch.set_output_voltage(5) ## -> Set the output pulse function to 5V (depending on the line/fridge resistance)
 
-    switch.connect('A', 1)
-    switch.disconnect('A', 1)
+    switch.connect('A', 1) ## Connect switch 1 of port A to the common terminal
+    switch.disconnect('A', 1) ## Disconnects contact 1 of port A from the common terminal
