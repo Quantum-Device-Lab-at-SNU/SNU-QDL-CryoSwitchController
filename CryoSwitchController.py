@@ -67,10 +67,10 @@ class Cryoswitch:
     def check_voltage(self, measured_voltage, target_voltage, tolerance=0.1, pre_str=''):
         error = abs((measured_voltage-target_voltage)/target_voltage)
         if error > tolerance:
-            print(pre_str, 'failed to set voltage, measured voltage', measured_voltage)
+            print(pre_str, 'failed to set voltage, measured voltage', round(measured_voltage, self.decimals))
             return False
         else:
-            print(pre_str, 'voltage set to', measured_voltage)
+            print(pre_str, 'voltage set to', round(measured_voltage, self.decimals), 'V')
             return True
 
     def get_HW_revision(self):
@@ -81,7 +81,7 @@ class Cryoswitch:
         time.sleep(2)
         bias_voltage = self.get_bias_voltage()
         if verbose:
-            self.check_voltage(bias_voltage -5, tolerance=0.1, pre_str='BIAS:')
+            self.check_voltage(bias_voltage, -5, tolerance=0.1, pre_str='BIAS:')
         return bias_voltage
 
     def disable_negative_supply(self):
