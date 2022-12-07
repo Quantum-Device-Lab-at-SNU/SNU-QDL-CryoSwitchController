@@ -49,11 +49,11 @@ A basic implementation of the CryoSwitchController class can be done with the fo
  
 ## Advanced functions
  
-- set_OCP_mA(OCP_value)
+- enable_OCP()
  
-        Input: Overcurrent protection trigger value (OCP_value).
-        Default: 100mA.
-        Sets the overcurrent protection to the specified value.
+        Input: None
+        Default: None.
+        Enables the overcurrent protection.
  
  
 - set_OCP_mA(OCP_value)
