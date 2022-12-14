@@ -20,7 +20,7 @@ class Cryoswitch:
         self.decimals = 2
         self.__constants()
 
-        self.plot = False
+        self.plot = True
         self.log_wav = False
 
 
@@ -172,6 +172,9 @@ class Cryoswitch:
         self.labphox.gpio_cmd('FORCE_PWR_EN', 0)
         self.enable_converter()
 
+    def get_output_state(self):
+        return self.labphox.gpio_cmd('PWR_STATUS')
+
     def set_pulse_duration_ms(self, ms_duration):
         pulse_offset = 100
         self.labphox.timer_cmd('duration', round(ms_duration*100 + pulse_offset))
@@ -192,6 +195,7 @@ class Cryoswitch:
             plt.plot(x_axis, current_data*current_gain)
             plt.xlabel('Time [ms]')
             plt.ylabel('Current [mA]')
+            plt.ylim(0, 100)
             plt.grid()
             plt.show()
         return current_data*current_gain
@@ -218,7 +222,7 @@ class Cryoswitch:
 
         if self.log_wav:
             current_data = pd.DataFrame({'current_wav': current_profile})
-            current_data.to_pickle('data/' + str(int(time.time())) + '_' + str(self.MEASURED_converter_voltage) + '_' + str(contact))
+            current_data.to_csv('data/' + str(int(time.time())) + '_' + str(int(self.MEASURED_converter_voltage)) + '_' + str(port) + str(contact) + '.csv')
 
         return current_profile
 
@@ -286,9 +290,10 @@ class Cryoswitch:
         self.enable_3V3()
         self.enable_5V()
         self.enable_OCP()
+        self.set_OCP_mA(80)
         self.disable_chopping()
 
-        self.set_pulse_duration_ms(10)
+        self.set_pulse_duration_ms(15)
 
         self.enable_output_channels()
         self.enable_converter()
@@ -308,7 +313,7 @@ if __name__ == "__main__":
     switch = Cryoswitch() ## -> CryoSwitch class declaration and USB connection
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = False ## -> Disable the current plotting function
-    switch.set_output_voltage(5) ## -> Set the output pulse function to 5V
+    switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
     switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
     switch.disconnect(port='A', contact=1) ## Disconnects contact 1 of port A from the common terminal

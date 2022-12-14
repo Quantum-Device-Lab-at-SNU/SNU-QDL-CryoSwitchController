@@ -307,7 +307,7 @@ class Labphox:
       response = self.parse_response()
 
     elif self.compare_cmd(cmd, 'PWR_STATUS'):
-      self.write(b'W:1::3;')
+      self.write(b'W:1:H:0;')
       response = self.parse_response()
       return int(response['value'])
 
