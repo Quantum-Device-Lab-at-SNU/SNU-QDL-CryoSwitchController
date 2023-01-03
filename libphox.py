@@ -11,7 +11,7 @@ class Labphox:
   def __init__(self, port ='', debug=False):
     self.debug = debug
     self.port = port
-    self.time_out = 100
+    self.time_out = 10
     self.log = False
 
     self.adc_ref = 3.3
@@ -252,7 +252,7 @@ class Labphox:
         s.close()
 
       reply = reply.strip(end_sequence).strip(encoded_cmd)
-      return reply
+      return reply[7:]
 
   def raise_value_mismatch(self):
     print('VALUE mismatch!')
