@@ -20,7 +20,7 @@ class Cryoswitch:
         self.decimals = 2
         self.__constants()
 
-        self.plot = True
+        self.plot = False
         self.log_wav = False
 
 
@@ -36,7 +36,7 @@ class Cryoswitch:
 
     def reset(self):
         self.labphox.reset_cmd('reset')
-        time.sleep(1)
+        time.sleep(3)
 
     def reconnect(self):
         self.labphox.connect()
@@ -185,7 +185,7 @@ class Cryoswitch:
         sampling_period = 1/sampling_freq
         current_gain = 1000 * self.labphox.adc_ref / (1 * 20 * 255)
 
-        current_data = np.round_(np.array(self.labphox.application_cmd('pulse', 1)), self.decimals)
+        current_data = self.labphox.application_cmd('pulse', 1)
 
         if plot or self.plot:
             edge = np.argmax(current_data>0)
@@ -291,7 +291,7 @@ class Cryoswitch:
         self.enable_5V()
         self.enable_OCP()
         self.set_OCP_mA(80)
-        self.disable_chopping()
+        self.enable_chopping()
 
         self.set_pulse_duration_ms(15)
 
@@ -310,9 +310,9 @@ class Cryoswitch:
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch() ## -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch(debug=True) ## -> CryoSwitch class declaration and USB connection
     switch.start() ## -> Initialization of the internal hardware
-    switch.plot = False ## -> Disable the current plotting function
+    switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
     switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
