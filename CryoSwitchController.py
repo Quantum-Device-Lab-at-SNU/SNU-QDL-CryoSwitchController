@@ -7,11 +7,11 @@ import pandas as pd
 
 class Cryoswitch:
 
-    def __init__(self, debug=False, port=''):
+    def __init__(self, debug=False, port='', IP=None):
         self.debug = debug
         self.port = port
 
-        self.labphox = Labphox(self.port, debug=self.debug)
+        self.labphox = Labphox(self.port, debug=self.debug, IP=IP)
         self.ports_enabled = self.labphox.N_channel
 
         self.wait_time = 0.5
@@ -283,6 +283,28 @@ class Cryoswitch:
     def get_power_status(self):
         return self.labphox.gpio_cmd('PWR_STATUS')
 
+    def set_ip(self, add="192.168.1.6"):
+        add = add.split('.')
+        ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
+        self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
+
+    def get_ip(self):
+        response = self.labphox.ETHERNET_cmd('get_ip')
+        add = [0, 0, 0, 0]
+        # ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
+        # self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
+        int_ip = int(response['value'])
+        add[3] = int(int_ip / 16777216)
+        int_ip -= 16777216*add[3]
+        add[2] = int(int_ip / 65536)
+        int_ip -= 65536 * add[2]
+        add[1] = int(int_ip / 256)
+        int_ip -= 256 * add[1]
+        add[0] = int(int_ip)
+        return add
+
+
+
     def start(self):
         print('Initialization...')
         self.labphox.ADC_cmd('start')
@@ -310,7 +332,8 @@ class Cryoswitch:
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch(debug=True) ## -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch(debug=True, IP="192.168.1.6") ## -> CryoSwitch class declaration and USB connection
+    switch.get_ip()
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V

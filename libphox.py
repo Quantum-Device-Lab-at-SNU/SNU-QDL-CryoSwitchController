@@ -8,17 +8,25 @@ import numpy as np
 
 class Labphox:
 
-  def __init__(self, port ='', debug=False):
+  def __init__(self, port ='', debug=False, IP=None):
     self.debug = debug
     self.port = port
-    self.time_out = 10
+    self.time_out = 20
     self.log = False
+
+    self.SW_version = 0
+    self.communication_sleep_time = 0.01
 
     self.adc_ref = 3.3
     self.N_channel = 0
+    self.board_FW = None
 
-    self.USB_or_ETH = 2 # 1 for USB, 2 for ETH
-    self.HOST = "192.168.1.6"  # The server's IP address
+    if IP:
+      self.USB_or_ETH = 2 # 1 for USB, 2 for ETH
+    else:
+      self.USB_or_ETH = 1  # 1 for USB, 2 for ETH
+
+    self.HOST = IP # The server's IP address
     self.PORT = 7  # The port used by the server
     self.ETH_buff_size = 1024
 
@@ -53,6 +61,8 @@ class Labphox:
       print('Connected to ' + self.name + ', IP:',
             str(self.HOST) + ', ' + self.board_SN + ', channels:' + str(self.N_channel))
 
+    if self.board_FW != self.SW_version:
+      raise Exception("Board Firmware version and Software version are not compatible, Board FW=" + str(self.board_FW) + " while SW=" + str(self.SW_version))
 
   def disconnect(self):
     self.serial_com.close()
@@ -130,7 +140,7 @@ class Labphox:
     initial_time = time.time()
     end = False
     while not end:
-      time.sleep(0.1)
+      time.sleep(self.communication_sleep_time)
       if self.input_buffer():
         reply += self.read_buffer().decode()
       if ';' in reply:
@@ -162,7 +172,7 @@ class Labphox:
       initial_time = time.time()
       end = False
       while not end:
-        time.sleep(0.1)
+        time.sleep(self.communication_sleep_time)
         if self.input_buffer():
           reply += self.read_buffer().decode()
         if ';' in reply:
@@ -179,7 +189,7 @@ class Labphox:
         s.sendto(encoded_cmd, (self.HOST, self.PORT))
         end = False
         while not end:
-          time.sleep(0.1)
+          time.sleep(self.communication_sleep_time)
           packet = s.recvfrom(self.ETH_buff_size)[0]
           if b';' in packet:
             reply += packet.split(b';')[0].decode()
@@ -210,7 +220,7 @@ class Labphox:
 
     return response
 
-  def packet_handler(self, cmd, end_sequence=b'\x00\xff\x00\xff', wait_time=0.1):
+  def packet_handler(self, cmd, end_sequence=b'\x00\xff\x00\xff'):
     reply = b''
     encoded_cmd = cmd.encode()
 
@@ -221,7 +231,7 @@ class Labphox:
       initial_time = time.time()
       end = False
       while not end:
-        time.sleep(wait_time)
+        time.sleep(self.communication_sleep_time)
         if self.input_buffer():
           reply += self.read_buffer()
         if end_sequence in reply[-5:]:
@@ -264,7 +274,7 @@ class Labphox:
       if 'LabP'.upper() in self.name:
         self.HW = self.utility_cmd('hw')
         self.board_SN = self.utility_cmd('sn')
-        self.board_FW = self.utility_cmd('fw')
+        self.board_FW = int(self.utility_cmd('fw').split('.')[-1])
         self.N_channel = int(self.utility_cmd('channels').split()[1])
 
     elif self.compare_cmd(cmd, 'name'):
@@ -456,6 +466,12 @@ class Labphox:
     response = None
     if self.compare_cmd(cmd, 'read'):
       response = self.communication_handler('W:Q:R:' + str(value) + ';')
+    elif self.compare_cmd(cmd, 'set_ip'):
+      response = self.communication_handler('W:Q:I:' + str(value) + ';')
+    elif self.compare_cmd(cmd, 'get_ip'):
+      response = self.communication_handler('W:Q:G:' + str(value) + ';')
+
+
     return response
 
 
