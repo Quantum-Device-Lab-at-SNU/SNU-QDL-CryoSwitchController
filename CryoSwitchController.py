@@ -14,7 +14,8 @@ class Cryoswitch:
         self.labphox = Labphox(self.port, debug=self.debug, IP=IP)
         self.ports_enabled = self.labphox.N_channel
 
-        self.wait_time = 0.5
+        self.wait_time = 0.1
+        self.pulse_duration_ms = 10
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = None
         self.decimals = 2
@@ -22,6 +23,10 @@ class Cryoswitch:
 
         self.plot = False
         self.log_wav = False
+        self.pulse_logging = True
+        self.pulse_logging_filename = 'pulse_logging.txt'
+        self.log_pulses_to_display = 2
+        self.warning_threshold_current = 60
 
 
     def __constants(self):
@@ -176,6 +181,7 @@ class Cryoswitch:
         return self.labphox.gpio_cmd('PWR_STATUS')
 
     def set_pulse_duration_ms(self, ms_duration):
+        self.pulse_duration_ms = ms_duration
         pulse_offset = 100
         self.labphox.timer_cmd('duration', round(ms_duration*100 + pulse_offset))
 
@@ -201,7 +207,7 @@ class Cryoswitch:
         return current_data*current_gain
 
     def select_output_channel(self, port, number, polarity):
-        if (0 < number < 7):
+        if 0 < number < 7:
             number = number - 1
             if polarity:
                 self.labphox.IO_expander_cmd('connect', port, number)
@@ -220,11 +226,42 @@ class Cryoswitch:
         current_profile = self.send_pulse()
         self.disable_output_channels()
 
+        if self.pulse_logging:
+            self.log_pulse(port, contact, polarity, current_profile.max())
         if self.log_wav:
-            current_data = pd.DataFrame({'current_wav': current_profile})
-            current_data.to_csv('data/' + str(int(time.time())) + '_' + str(int(self.MEASURED_converter_voltage)) + '_' + str(port) + str(contact) + '.csv')
-
+            self.log_waveform(port, contact, polarity, current_profile)
         return current_profile
+
+    def log_waveform(self, port, contact, polarity, current_profile):
+        current_data = pd.DataFrame({'current_wav': current_profile})
+        current_data.to_csv(
+            'data/' + str(int(time.time())) + '_' + str(int(self.MEASURED_converter_voltage)) + '_' + str(port) + str(
+                contact) + '.csv')
+
+    def log_pulse(self, port, contact, polarity, max_current):
+        if polarity:
+            direction = 'Connect   '
+        else:
+            direction = 'Disconnect'
+
+        pulse_string = direction + '-> Port:' + port + '-' + str(contact) + ', CurrentMax:' + str(round(max_current)) + ' Timestamp:' + str(int(time.time()))
+
+        if max_current < self.warning_threshold_current:
+            warning_string = ' *Warnings: Low current detected!'
+        else:
+            warning_string = ''
+
+        with open(self.pulse_logging_filename, 'a') as logging_file:
+            logging_file.write(pulse_string + warning_string + '\n')
+
+    def get_pulse_history(self, number_pulses=None):
+        if not number_pulses:
+            pulses = self.log_pulses_to_display
+        with open(self.pulse_logging_filename, 'r') as logging_file:
+            last_pulse_info = logging_file.readlines()[-number_pulses:]
+
+        for pulse in last_pulse_info:
+            print(pulse, end='')
 
     def connect(self, port, contact):
 
@@ -302,8 +339,6 @@ class Cryoswitch:
         int_ip -= 256 * add[1]
         add[0] = int(int_ip)
         return add
-
-
 
     def start(self):
         print('Initialization...')

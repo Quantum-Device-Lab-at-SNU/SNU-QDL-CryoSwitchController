@@ -8,11 +8,11 @@ import numpy as np
 
 class Labphox:
 
-  def __init__(self, port ='', debug=False, IP=None):
+  def __init__(self, port ='', debug=False, IP=None, cmd_logging=False):
     self.debug = debug
     self.port = port
     self.time_out = 20
-    self.log = False
+    self.log = cmd_logging
 
     self.SW_version = 0
     self.communication_sleep_time = 0.01
