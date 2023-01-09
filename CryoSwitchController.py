@@ -279,7 +279,9 @@ class Cryoswitch:
                 break
 
         for idx, pulse in enumerate(list_for_display):
-            print(list_for_display[-idx-1], end='')
+            raw_data = list_for_display[-idx - 1].split(',')
+            pulse_time = time.ctime(int(raw_data[1].split(':')[-1].strip()))
+            print(raw_data[0] + ', ' + time.strftime("%a %b-%m %H:%M:%S%p", pulse_time))
 
     def connect(self, port, contact):
 
