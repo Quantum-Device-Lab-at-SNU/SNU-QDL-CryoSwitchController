@@ -254,14 +254,32 @@ class Cryoswitch:
         with open(self.pulse_logging_filename, 'a') as logging_file:
             logging_file.write(pulse_string + warning_string + '\n')
 
-    def get_pulse_history(self, number_pulses=None):
+    def get_pulse_history(self, port=None, number_pulses=None):
         if not number_pulses:
-            pulses = self.log_pulses_to_display
-        with open(self.pulse_logging_filename, 'r') as logging_file:
-            last_pulse_info = logging_file.readlines()[-number_pulses:]
+            number_pulses = self.log_pulses_to_display
 
-        for pulse in last_pulse_info:
-            print(pulse, end='')
+        with open(self.pulse_logging_filename, 'r') as logging_file:
+            pulse_info = logging_file.readlines()
+
+        list_for_display = []
+        counter = 0
+        for idx, pulse in enumerate(pulse_info):
+            pulse = pulse_info[-idx-1]
+            if port:
+                if "Port:" + port + "-" in pulse:
+                    list_for_display.append(pulse)
+                    ##print(pulse, end='')
+                    counter += 1
+            else:
+                ##print(pulse, end='')
+                list_for_display.append(pulse)
+                counter += 1
+
+            if counter >= number_pulses:
+                break
+
+        for idx, pulse in enumerate(list_for_display):
+            print(list_for_display[-idx-1], end='')
 
     def connect(self, port, contact):
 
@@ -369,6 +387,7 @@ if __name__ == "__main__":
 
     switch = Cryoswitch(debug=True, IP="192.168.1.6") ## -> CryoSwitch class declaration and USB connection
     switch.get_ip()
+    switch.get_pulse_history(number_pulses=5)
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
