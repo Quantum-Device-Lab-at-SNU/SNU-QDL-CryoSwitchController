@@ -306,6 +306,10 @@ class Labphox:
       response = self.communication_handler('W:2:C:;')
       return response['value']
 
+    elif self.compare_cmd(cmd, 'UID'):
+      response = self.communication_handler('W:2:G:' + str(value) + ';')
+      return response['value']
+
     elif self.compare_cmd(cmd, 'sleep'):
       response = self.communication_handler('W:2:S:' + str(value) + ';')
 
@@ -494,14 +498,33 @@ class Labphox:
 
     return response
 
+
+  def UPGRADE_cmd(self, cmd, value):
+    response = None
+
+    if self.compare_cmd(cmd, 'upgrade'):
+      response = self.communication_handler('U:A:0' + ':' + str(value) + ';')
+      if int(response['value']) == value:
+        print('Update successful,', value, 'channels enabled')
+      else:
+        print('Couldn\'t update channel number')
+
+    elif self.compare_cmd(cmd, 'stream_key'):
+      for idx, element in enumerate(value):
+        response = self.communication_handler('U:B:' + str(chr(65+idx)) + ':' + str(element) + ';')
+        if int(response['value']) != element:
+          print('Error while sending key!')
+
+    return response
+
   def FLASH_utils(self):
     # stream = os.popen('.\dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D .\Labphox.bin')
     # output = stream.read()
     # print(output)
 
-    process = subprocess.Popen(['.\dfu-util', '-d 0483:df11', '-a 0', '-s 0x08000000:leave', '-D Labphox.bin'],
-                               stdout=subprocess.PIPE,
-                               universal_newlines=True)
+    # process = subprocess.Popen(['.\dfu-util', '-d 0483:df11', '-a 0', '-s 0x08000000:leave', '-D Labphox.bin'],
+    #                            stdout=subprocess.PIPE,
+    #                            universal_newlines=True)
 
     found = False
     process = subprocess.Popen(['.\dfu-util', '-l'], shell=True,
@@ -540,7 +563,7 @@ class Labphox:
         else:
           poll = process.poll()
 
-      print('Flashing time', exc_time)
+      print('Flashing time', round(exc_time, 2), 's')
 
 
 
@@ -548,7 +571,10 @@ class Labphox:
 
 if __name__ == "__main__":
 
-  cryoswitch = Labphox(IP='192.168.1.6')
+  cryoswitch = Labphox(debug=True) ##IP='192.168.1.6'
+
+  cryoswitch.UPGRADE_cmd(cmd='stream_key', value=[52, 121, 7, 70, 32, 42, 86, 35, 5, 125, 1, 118])
+  cryoswitch.UPGRADE_cmd('upgrade', 4)
   cryoswitch.application_cmd('pulse')
   cryoswitch.scanI2C()
 

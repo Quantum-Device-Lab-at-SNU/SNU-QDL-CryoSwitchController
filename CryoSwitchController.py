@@ -41,6 +41,8 @@ class Cryoswitch:
         self.converter_divider = 11
         self.converter_ADC = 10
 
+        self.current_sense_R = 1
+
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
     def flash(self):
@@ -125,7 +127,7 @@ class Cryoswitch:
             R1 = 500000
             R2 = 500000
             Rf = 15000
-            code = int((VREF - (Vout - VREF * (1 + (R1 / R2)))*(Rf/R1))*(4096/self.labphox.adc_ref))
+            code = int((VREF - (Vout - VREF * (1 + (R1 / R2)))*(Rf/R1))*(self.ADC_12B_res/self.labphox.adc_ref))
 
             if code < 550 or code > 1500:
                 return False
@@ -174,7 +176,7 @@ class Cryoswitch:
         self.labphox.gpio_cmd('CHOPPING_EN', 0)
 
     def set_OCP_mA(self, value):
-        DAC_reg = int(value*(20*4096/(2*1000*self.labphox.adc_ref)))
+        DAC_reg = int(value*(self.current_sense_R*20*self.ADC_12B_res/(2*1000*self.labphox.adc_ref)))
 
         if 0 < DAC_reg < 4095:
             self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
@@ -206,7 +208,7 @@ class Cryoswitch:
 
         sampling_freq = 28000
         sampling_period = 1/sampling_freq
-        current_gain = 1000 * self.labphox.adc_ref / (0.5 * 20 * 255)
+        current_gain = 1000 * self.labphox.adc_ref / (self.current_sense_R * 20 * 255)
 
         current_data = self.labphox.application_cmd('pulse', 1)
 
@@ -219,10 +221,10 @@ class Cryoswitch:
             plt.xlabel('Time [ms]')
             plt.ylabel('Current [mA]')
 
-            if self.current_switch_model == 'R583423141':
-                plt.ylim(0, 100)
-            elif self.current_switch_model == 'R573423600':
-                plt.ylim(0, 200)
+            # if self.current_switch_model == 'R583423141':
+            #     plt.ylim(0, 100)
+            # elif self.current_switch_model == 'R573423600':
+            #     plt.ylim(0, 200)
             plt.grid()
             plt.show()
         return current_data*current_gain
