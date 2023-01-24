@@ -4,18 +4,20 @@ import time
 import json
 import socket
 import numpy as np
+import os
+import subprocess
 
 
 class Labphox:
 
   def __init__(self, port ='', debug=False, IP=None, cmd_logging=False):
     self.debug = debug
-    self.port = port
+    self.COM_port = port
     self.time_out = 20
     self.log = cmd_logging
 
-    self.SW_version = 0
-    self.communication_sleep_time = 0.01
+    self.SW_version = 1
+    self.communication_sleep_time = 0
 
     self.adc_ref = 3.3
     self.N_channel = 0
@@ -26,40 +28,43 @@ class Labphox:
     else:
       self.USB_or_ETH = 1  # 1 for USB, 2 for ETH
 
-    self.HOST = IP # The server's IP address
-    self.PORT = 7  # The port used by the server
+    self.ETH_HOST = IP # The server's IP address
+    self.ETH_PORT = 7  # The port used by the server
     self.ETH_buff_size = 1024
 
     self.connect()
 
   def connect(self):
     if self.USB_or_ETH == 1:
-      if self.port == '':
+      if self.COM_port == '':
         for device in serial.tools.list_ports.comports():
           if device.pid == 1812:
             self.PID = device.pid
+            self.COM_port = device.device
             if self.debug:
               for i in device:
                 print(i)
 
-            try:
-              self.serial_com = serial.Serial(device.device)
+      try:
+        self.serial_com = serial.Serial(self.COM_port)
 
-              self.board_info = ''
-              self.name = ''
-              self.board_SN = None
-              self.utility_cmd('info')
-              print('Connected to ' + self.name + ', PID:', str(self.PID) + ', ' +  self.board_SN +  ', channels:' + str(self.N_channel))
-            except:
-              print('ERROR: Couldn\'t connect')
+        self.board_info = ''
+        self.name = ''
+        self.board_SN = None
+        self.utility_cmd('info')
+        print('Connected to ' + self.name + ' on COM port ' + self.COM_port +', PID:', str(self.PID) + ', ' +  self.board_SN +  ', channels:' + str(self.N_channel))
+      except:
+        print('ERROR: Couldn\'t connect')
 
     elif self.USB_or_ETH == 2:
+      socket.setdefaulttimeout(self.time_out)
+
       self.board_info = ''
       self.name = ''
       self.board_SN = None
       self.utility_cmd('info')
       print('Connected to ' + self.name + ', IP:',
-            str(self.HOST) + ', ' + self.board_SN + ', channels:' + str(self.N_channel))
+            str(self.ETH_HOST) + ', ' + self.board_SN + ', channels:' + str(self.N_channel))
 
     if self.board_FW != self.SW_version:
       raise Exception("Board Firmware version and Software version are not compatible, Board FW=" + str(self.board_FW) + " while SW=" + str(self.SW_version))
@@ -166,6 +171,7 @@ class Labphox:
     reply = ''
 
     if self.USB_or_ETH == 1:
+      self.flush_input_buffer()
       self.write(encoded_cmd)
 
 
@@ -186,7 +192,7 @@ class Labphox:
 
     elif self.USB_or_ETH == 2:
       with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as s:
-        s.sendto(encoded_cmd, (self.HOST, self.PORT))
+        s.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
         end = False
         while not end:
           time.sleep(self.communication_sleep_time)
@@ -195,7 +201,11 @@ class Labphox:
             reply += packet.split(b';')[0].decode()
             end = True
           else:
-            reply += packet.decode()
+            try:
+              reply += packet.decode()
+            except:
+              print('Invalid packet character', packet)
+              break
 
         # try:
         #   reply = reply.split(';')[0]
@@ -246,10 +256,10 @@ class Labphox:
 
     elif self.USB_or_ETH == 2:
       with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as s:
-        s.sendto(encoded_cmd, (self.HOST, self.PORT))
+        s.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
         end = False
         while not end:
-          time.sleep(0.1)
+          time.sleep(self.communication_sleep_time)
           packet = s.recvfrom(self.ETH_buff_size)[0]
           reply += packet.split(b';')[0]
           if end_sequence in reply[-5:]:
@@ -428,6 +438,9 @@ class Labphox:
     elif self.compare_cmd(cmd, 'off'):
       response = self.communication_handler('W:6:U:' + str(value) + ';')
 
+    elif self.compare_cmd(cmd, 'type'):
+      response = self.communication_handler('W:6:S:' + str(value) + ';')
+
     return response
 
 
@@ -471,13 +484,71 @@ class Labphox:
     elif self.compare_cmd(cmd, 'get_ip'):
       response = self.communication_handler('W:Q:G:' + str(value) + ';')
 
+    elif self.compare_cmd(cmd, 'set_ip_str'):
+      int_IP = int.from_bytes(socket.inet_aton(value), "little")
+      response = self.communication_handler('W:Q:I:' + str(int_IP) + ';')
+    elif self.compare_cmd(cmd, 'get_ip_str'):
+      response = self.communication_handler('W:Q:G:' + str(value) + ';')
+      print('IP:', socket.inet_ntoa(int(response['value']).to_bytes(4, 'little')))
+
 
     return response
+
+  def FLASH_utils(self):
+    # stream = os.popen('.\dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D .\Labphox.bin')
+    # output = stream.read()
+    # print(output)
+
+    process = subprocess.Popen(['.\dfu-util', '-d 0483:df11', '-a 0', '-s 0x08000000:leave', '-D Labphox.bin'],
+                               stdout=subprocess.PIPE,
+                               universal_newlines=True)
+
+    found = False
+    process = subprocess.Popen(['.\dfu-util', '-l'], shell=True,
+                               stdout=subprocess.PIPE,
+                               universal_newlines=True)
+
+    start_time = time.time()
+    exc_time = 0
+    while exc_time < self.time_out:
+      output = process.stdout.readline()
+      if 'Internal Flash' in output and 'Found DFU: [0483:df11]' in output:
+        found = True
+        break
+      exc_time = time.time() - start_time
+
+    if not found:
+      print('Couldn\'t find the the device')
+    else:
+      print('Device found in', output.strip().strip('Found DFU: '))
+
+      process = subprocess.Popen('.\dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D .\Labphox.bin', shell=True,
+                                 stdout=subprocess.PIPE,
+                                 universal_newlines=True)
+
+      start_time = time.time()
+      exc_time = 0
+      poll = process.poll()
+      while poll is None:
+        output = process.stdout.readline()
+        if 'Download' in output or 'device'.upper() in output.upper() or 'dfu'.upper() in output.upper() and 'bugs' not in output:
+          print(output.strip())
+        exc_time = time.time() - start_time
+
+        if exc_time > 40:
+          break
+        else:
+          poll = process.poll()
+
+      print('Flashing time', exc_time)
+
+
+
 
 
 if __name__ == "__main__":
 
-  cryoswitch = Labphox()
+  cryoswitch = Labphox(IP='192.168.1.6')
   cryoswitch.application_cmd('pulse')
   cryoswitch.scanI2C()
 

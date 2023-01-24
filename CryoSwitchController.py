@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 
+
 class Cryoswitch:
 
     def __init__(self, debug=False, port='', IP=None):
@@ -20,6 +21,7 @@ class Cryoswitch:
         self.MEASURED_converter_voltage = None
         self.decimals = 2
         self.__constants()
+        self.current_switch_model = 'R583423141'
 
         self.plot = False
         self.log_wav = False
@@ -38,6 +40,17 @@ class Cryoswitch:
 
         self.converter_divider = 11
         self.converter_ADC = 10
+
+    def set_FW_upgrade_mode(self):
+        self.labphox.reset_cmd('boot')
+    def flash(self):
+        reply = input('Are you sure you want to flash the device?')
+        if 'Y' in reply.upper():
+            self.set_FW_upgrade_mode()
+            time.sleep(5)
+            self.labphox.FLASH_utils()
+        else:
+            print('Aborting flash sequence...')
 
     def reset(self):
         self.labphox.reset_cmd('reset')
@@ -122,9 +135,9 @@ class Cryoswitch:
                 time.sleep(1)
                 measured_voltage = self.get_converter_voltage()
                 tolerance = 0.1
-                time.sleep(0.5)
                 if verbose:
                     self.check_voltage(measured_voltage, Vout, tolerance=0.1, pre_str='CONVERTER:')
+                print("CONVERTER_STAT:", str(measured_voltage) + 'V')
                 return measured_voltage
 
         else:
@@ -162,7 +175,11 @@ class Cryoswitch:
 
     def set_OCP_mA(self, value):
         DAC_reg = int(value*(20*4096/(2*1000*self.labphox.adc_ref)))
-        self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
+
+        if 0 < DAC_reg < 4095:
+            self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
+        else:
+            print('Over current protection outside of range')
 
     def enable_chopping(self):
         self.labphox.gpio_cmd('CHOPPING_EN', 1)
@@ -189,7 +206,7 @@ class Cryoswitch:
 
         sampling_freq = 28000
         sampling_period = 1/sampling_freq
-        current_gain = 1000 * self.labphox.adc_ref / (1 * 20 * 255)
+        current_gain = 1000 * self.labphox.adc_ref / (0.5 * 20 * 255)
 
         current_data = self.labphox.application_cmd('pulse', 1)
 
@@ -201,10 +218,28 @@ class Cryoswitch:
             plt.plot(x_axis, current_data*current_gain)
             plt.xlabel('Time [ms]')
             plt.ylabel('Current [mA]')
-            plt.ylim(0, 100)
+
+            if self.current_switch_model == 'R583423141':
+                plt.ylim(0, 100)
+            elif self.current_switch_model == 'R573423600':
+                plt.ylim(0, 200)
             plt.grid()
             plt.show()
         return current_data*current_gain
+
+
+    def select_switch_model(self, model='R583423141'):
+
+        if model.upper() == 'R583423141'.upper():
+            self.current_switch_model = 'R583423141'
+            self.labphox.IO_expander_cmd('type', value=1)
+            self.enable_output_channels()
+
+        elif model.upper() == 'R573423600'.upper():
+            self.current_switch_model = 'R573423600'
+            self.labphox.IO_expander_cmd('type', value=2)
+            self.enable_output_channels()
+
 
     def select_output_channel(self, port, number, polarity):
         if 0 < number < 7:
@@ -222,7 +257,7 @@ class Cryoswitch:
         else:
             self.select_output_channel(port, contact, 0)
 
-        time.sleep(1)
+        ##time.sleep(1)
         current_profile = self.send_pulse()
         self.disable_output_channels()
 
@@ -236,7 +271,7 @@ class Cryoswitch:
         current_data = pd.DataFrame({'current_wav': current_profile})
         current_data.to_csv(
             'data/' + str(int(time.time())) + '_' + str(int(self.MEASURED_converter_voltage)) + '_' + str(port) + str(
-                contact) + '.csv')
+                contact) + '_' + str(polarity) + '.csv')
 
     def log_pulse(self, port, contact, polarity, max_current):
         if polarity:
@@ -280,12 +315,18 @@ class Cryoswitch:
 
         for idx, pulse in enumerate(list_for_display):
             raw_data = list_for_display[-idx - 1].split(',')
-            pulse_time = time.localtime(int(raw_data[1].split(':')[-1].strip()))
-            print(raw_data[0] + ', ' + time.strftime("%a %b-%m %H:%M:%S%p", pulse_time))
+            if '*' in raw_data[-1]:
+                extra_text = raw_data[1].split('*')[-1].strip()
+                pulse_time = time.localtime(int(raw_data[1].split('*')[0].split(':')[-1].strip()))
+            else:
+                extra_text = ''
+                pulse_time = time.localtime(int(raw_data[1].split(':')[-1].strip()))
+
+
+            print(raw_data[0] + ', ' + time.strftime("%a %b-%m %H:%M:%S%p", pulse_time) + ' ' + extra_text)
 
     def connect(self, port, contact):
 
-        self.ports_enabled = self.labphox.N_channel
         send_pulse = False
 
         if port == 'A' and self.ports_enabled >= 1:
@@ -332,11 +373,6 @@ class Cryoswitch:
         else:
             print('Out of range: Port', port)
 
-    def set_FW_upgrade_mode(self):
-        self.labphox.reset_cmd('boot')
-        time.sleep(0.1)
-        self.labphox.reset_cmd('reset')
-
     def get_power_status(self):
         return self.labphox.gpio_cmd('PWR_STATUS')
 
@@ -380,19 +416,30 @@ class Cryoswitch:
         if not self.get_power_status():
             print('PWR_STAT: Output not enabled')
         else:
-            print('Ready')
+            print('PWR_STAT: Ready')
 
 
 
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch(debug=True, IP="192.168.1.6") ## -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch(debug=True) ## -> CryoSwitch class declaration and USB connection
     switch.get_ip()
     switch.get_pulse_history(number_pulses=5)
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
+
+    switch.select_switch_model('R573423600')
+    switch.set_OCP_mA(300)
+    switch.set_pulse_duration_ms(50)
+    switch.set_output_voltage(25)
+    switch.connect(port='C', contact=1)
+
     switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
     switch.disconnect(port='A', contact=1) ## Disconnects contact 1 of port A from the common terminal
+
+
+
+
