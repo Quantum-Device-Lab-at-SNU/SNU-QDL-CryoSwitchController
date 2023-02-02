@@ -3,25 +3,28 @@ import matplotlib.pyplot as plt
 from libphox import Labphox
 import numpy as np
 import pandas as pd
-
+import json
 
 
 class Cryoswitch:
 
-    def __init__(self, debug=False, port='', IP=None):
+    def __init__(self, debug=False, COM_port='', IP=None, SN=None):
         self.debug = debug
-        self.port = port
+        self.port = COM_port
+        self.IP = IP
 
-        self.labphox = Labphox(self.port, debug=self.debug, IP=IP)
+        self.labphox = Labphox(self.port, debug=self.debug, IP=self.IP, SN=SN)
         self.ports_enabled = self.labphox.N_channel
+        self.SN = self.labphox.board_SN
 
         self.wait_time = 0.1
         self.pulse_duration_ms = 10
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = None
         self.decimals = 2
-        self.__constants()
+
         self.current_switch_model = 'R583423141'
+
 
         self.plot = False
         self.log_wav = False
@@ -30,6 +33,24 @@ class Cryoswitch:
         self.log_pulses_to_display = 2
         self.warning_threshold_current = 60
 
+        self.track_states = True
+        self.track_states_file = 'states.json'
+
+        self.__constants()
+
+        if self.track_states:
+            self.tracking_init()
+
+
+    def tracking_init(self):
+        file = open(self.track_states_file)
+        states = json.load(file)
+        file.close()
+        if self.SN not in states.keys():
+            states[self.SN] = states['SN']
+
+            with open(self.track_states_file, 'w') as outfile:
+                json.dump(states, outfile)
 
     def __constants(self):
         self.ADC_12B_res = 4095
@@ -45,6 +66,7 @@ class Cryoswitch:
 
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
+
     def flash(self):
         reply = input('Are you sure you want to flash the device?')
         if 'Y' in reply.upper():
@@ -112,6 +134,7 @@ class Cryoswitch:
 
     def disable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 0)
+        return self.get_bias_voltage()
 
     def set_output_voltage(self, Vout, verbose=False):
         if 5 <= Vout <= 28:
@@ -254,6 +277,9 @@ class Cryoswitch:
             print('SW out of range')
 
     def select_and_pulse(self, port, contact, polarity):
+        if self.track_states:
+            self.save_switch_state(port, contact, polarity)
+
         if polarity:
             self.select_output_channel(port, contact, 1)
         else:
@@ -268,6 +294,21 @@ class Cryoswitch:
         if self.log_wav:
             self.log_waveform(port, contact, polarity, current_profile)
         return current_profile
+
+    def save_switch_state(self, port, contact, polarity):
+        file = open(self.track_states_file)
+        states = json.load(file)
+        file.close()
+
+        SN = self.SN
+        port = 'port_' + str(port)
+        contact = 'contact_' + str(contact)
+        if SN in states.keys():
+            states[SN][port][contact] = polarity
+
+            with open(self.track_states_file, 'w') as outfile:
+                json.dump(states, outfile)
+
 
     def log_waveform(self, port, contact, polarity, current_profile):
         current_data = pd.DataFrame({'current_wav': current_profile})
@@ -425,19 +466,12 @@ class Cryoswitch:
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch(debug=True) ## -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch() ## -> CryoSwitch class declaration and USB connection
     switch.get_ip()
-    switch.get_pulse_history(number_pulses=5)
+    switch.get_pulse_history(number_pulses=5, port='A')
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
-
-
-    switch.select_switch_model('R573423600')
-    switch.set_OCP_mA(300)
-    switch.set_pulse_duration_ms(50)
-    switch.set_output_voltage(25)
-    switch.connect(port='C', contact=1)
 
     switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
     switch.disconnect(port='A', contact=1) ## Disconnects contact 1 of port A from the common terminal
