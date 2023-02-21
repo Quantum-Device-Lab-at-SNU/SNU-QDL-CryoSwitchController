@@ -4,6 +4,7 @@ from libphox import Labphox
 import numpy as np
 import pandas as pd
 import json
+import os
 
 
 class Cryoswitch:
@@ -21,25 +22,31 @@ class Cryoswitch:
         self.pulse_duration_ms = 10
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = None
-        self.decimals = 2
-
         self.current_switch_model = 'R583423141'
 
-
+        self.decimals = 2
         self.plot = False
         self.log_wav = False
-        self.pulse_logging = True
-        self.pulse_logging_filename = 'pulse_logging.txt'
+        self.log_wav_dir = r'\data'
+        self.align_edges = True
+
+        self.pulse_logging = False
+        self.pulse_logging_filename = r'pulse_logging.txt'
         self.log_pulses_to_display = 2
         self.warning_threshold_current = 60
 
-        self.track_states = True
-        self.track_states_file = 'states.json'
+        self.track_states = False
+        self.track_states_file = os.getcwd() + r'\states.json'
 
         self.__constants()
 
         if self.track_states:
             self.tracking_init()
+
+        if self.log_wav:
+            if not os.path.isdir(os.getcwd() + self.log_wav_dir):
+                os.mkdir(os.getcwd() + self.log_wav_dir)
+
 
 
     def tracking_init(self):
@@ -48,7 +55,6 @@ class Cryoswitch:
         file.close()
         if self.SN not in states.keys():
             states[self.SN] = states['SN']
-
             with open(self.track_states_file, 'w') as outfile:
                 json.dump(states, outfile)
 
@@ -64,15 +70,17 @@ class Cryoswitch:
 
         self.current_sense_R = 1
 
+        self.sampling_freq = 28000
+
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
 
-    def flash(self):
+    def flash(self, path=None):
         reply = input('Are you sure you want to flash the device?')
         if 'Y' in reply.upper():
             self.set_FW_upgrade_mode()
             time.sleep(5)
-            self.labphox.FLASH_utils()
+            self.labphox.FLASH_utils(path)
         else:
             print('Aborting flash sequence...')
 
@@ -124,12 +132,11 @@ class Cryoswitch:
     def get_HW_revision(self):
         pass
 
-    def enable_negative_supply(self, verbose=False):
+    def enable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 1)
         time.sleep(2)
         bias_voltage = self.get_bias_voltage()
-        if verbose:
-            self.check_voltage(bias_voltage, -5, tolerance=0.1, pre_str='BIAS:')
+        self.check_voltage(bias_voltage, -5, tolerance=0.1, pre_str='BIAS:')
         return bias_voltage
 
     def disable_negative_supply(self):
@@ -145,7 +152,6 @@ class Cryoswitch:
                 self.enable_negative_supply()
 
             self.labphox.DAC_cmd('on', DAC=1)
-
             VREF = 1.23
             R1 = 500000
             R2 = 500000
@@ -229,27 +235,10 @@ class Cryoswitch:
 
     def send_pulse(self, plot=False):
 
-        sampling_freq = 28000
-        sampling_period = 1/sampling_freq
         current_gain = 1000 * self.labphox.adc_ref / (self.current_sense_R * 20 * 255)
 
         current_data = self.labphox.application_cmd('pulse', 1)
 
-        if plot or self.plot:
-            edge = np.argmax(current_data>0)
-            current_data = current_data[edge:]
-            data_points = len(current_data)
-            x_axis = np.linspace(0, data_points*sampling_period, data_points)*1000
-            plt.plot(x_axis, current_data*current_gain)
-            plt.xlabel('Time [ms]')
-            plt.ylabel('Current [mA]')
-
-            # if self.current_switch_model == 'R583423141':
-            #     plt.ylim(0, 100)
-            # elif self.current_switch_model == 'R573423600':
-            #     plt.ylim(0, 200)
-            plt.grid()
-            plt.show()
         return current_data*current_gain
 
 
@@ -282,12 +271,38 @@ class Cryoswitch:
 
         if polarity:
             self.select_output_channel(port, contact, 1)
+            polarity_str = 'Connect'
         else:
             self.select_output_channel(port, contact, 0)
+            polarity_str = 'Disconnect'
 
         ##time.sleep(1)
         current_profile = self.send_pulse()
         self.disable_output_channels()
+
+        if self.plot:
+            sampling_period = 1 / self.sampling_freq
+
+            if self.align_edges:
+                edge = np.argmax(current_profile>0)
+                current_data = current_profile[edge:]
+            else:
+                current_data = current_profile
+            data_points = len(current_data)
+            x_axis = np.linspace(0, data_points*sampling_period, data_points)*1000
+            plt.plot(x_axis, current_data)
+            plt.xlabel('Time [ms]')
+            plt.ylabel('Current [mA]')
+            plt.title(time.strftime("%b-%m %H:%M:%S%p", time.gmtime()))
+            plt.suptitle('Port ' + port + '-' + str(contact) + ' ' + polarity_str)
+
+
+            if self.current_switch_model == 'R583423141':
+                plt.ylim(0, 100)
+            elif self.current_switch_model == 'R573423600':
+                plt.ylim(0, 200)
+            plt.grid()
+            plt.show()
 
         if self.pulse_logging:
             self.log_pulse(port, contact, polarity, current_profile.max())
@@ -346,10 +361,8 @@ class Cryoswitch:
             if port:
                 if "Port:" + port + "-" in pulse:
                     list_for_display.append(pulse)
-                    ##print(pulse, end='')
                     counter += 1
             else:
-                ##print(pulse, end='')
                 list_for_display.append(pulse)
                 counter += 1
 
@@ -365,11 +378,9 @@ class Cryoswitch:
                 extra_text = ''
                 pulse_time = time.localtime(int(raw_data[1].split(':')[-1].strip()))
 
-
             print(raw_data[0] + ', ' + time.strftime("%a %b-%m %H:%M:%S%p", pulse_time) + ' ' + extra_text)
 
     def connect(self, port, contact):
-
         send_pulse = False
 
         if port == 'A' and self.ports_enabled >= 1:
@@ -419,7 +430,7 @@ class Cryoswitch:
     def get_power_status(self):
         return self.labphox.gpio_cmd('PWR_STATUS')
 
-    def set_ip(self, add="192.168.1.6"):
+    def set_ip(self, add="192.168.1.101"):
         add = add.split('.')
         ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
         self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
@@ -437,6 +448,7 @@ class Cryoswitch:
         add[1] = int(int_ip / 256)
         int_ip -= 256 * add[1]
         add[0] = int(int_ip)
+        print('IP:', add)
         return add
 
     def start(self):
@@ -466,15 +478,21 @@ class Cryoswitch:
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch() ## -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch(IP='192.168.1.100') ## -> CryoSwitch class declaration and USB connection
     switch.get_ip()
+    ##switch.flash(path=r'C:\Users\Cristobal\Desktop\FW\STM32F4\Labphox\Debug')
+
     switch.get_pulse_history(number_pulses=5, port='A')
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
-    switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
-    switch.disconnect(port='A', contact=1) ## Disconnects contact 1 of port A from the common terminal
+    switch.connect(port='C', contact=1) ## Connect contact 1 of port A to the common terminal
+    switch.disconnect(port='C', contact=1) ## Disconnects contact 1 of port A from the common terminal
+
+    for vol in range(10, 25):
+        switch.set_output_voltage(vol)
+        switch.connect('C', 1)
 
 
 

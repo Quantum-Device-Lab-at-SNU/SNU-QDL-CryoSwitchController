@@ -4,7 +4,6 @@ import time
 import json
 import socket
 import numpy as np
-import os
 import subprocess
 
 
@@ -15,7 +14,7 @@ class Labphox:
         self.time_out = 30
         self.log = cmd_logging
 
-        self.SW_version = 1
+        self.SW_version = 2
         self.board_SN = SN
         self.board_FW = None
 
@@ -28,7 +27,8 @@ class Labphox:
         self.ETH_PORT = 7  # The port used by the server
         self.ETH_buff_size = 1024
 
-        self.communication_sleep_time = 0
+        self.communication_handler_sleep_time = 0
+        self.packet_handler_sleep_time = 0.001
         if IP:
             self.USB_or_ETH = 2  # 1 for USB, 2 for ETH
             self.ETH_HOST = IP  # The server's IP address
@@ -163,7 +163,7 @@ class Labphox:
         initial_time = time.time()
         end = False
         while not end:
-            time.sleep(self.communication_sleep_time)
+            time.sleep(self.communication_handler_sleep_time)
             if self.input_buffer():
                 reply += self.read_buffer().decode()
             if ';' in reply:
@@ -192,7 +192,7 @@ class Labphox:
             initial_time = time.time()
             end = False
             while not end:
-                time.sleep(self.communication_sleep_time)
+                time.sleep(self.communication_handler_sleep_time)
                 if self.input_buffer():
                     reply += self.read_buffer().decode()
                 if ';' in reply:
@@ -209,7 +209,7 @@ class Labphox:
                 UDP_connection.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
                 end = False
                 while not end:
-                    time.sleep(self.communication_sleep_time)
+                    time.sleep(self.communication_handler_sleep_time)
                     packet = UDP_connection.recvfrom(self.ETH_buff_size)[0]
                     if b';' in packet:
                         reply += packet.split(b';')[0].decode()
@@ -226,6 +226,8 @@ class Labphox:
         try:
             if standard:
                 response = {'reply': reply, 'command': reply.split(':')[:-1], 'value': reply.split(':')[-1]}
+                if not self.validate_reply(cmd, response):
+                    self.raise_value_mismatch()
             else:
                 response = reply
         except:
@@ -234,7 +236,21 @@ class Labphox:
         if self.debug:
             self.debug_func(response)
 
+
+
         return response
+
+
+    def validate_reply(self, cmd, response):
+        stripped = cmd.strip(';').split(':')
+        command = stripped[:-1]
+        value = stripped[-1]
+
+        match = True
+        if command != response['command']:
+            match = False
+
+        return match
 
     def packet_handler(self, cmd, end_sequence=b'\x00\xff\x00\xff'):
         reply = b''
@@ -247,7 +263,7 @@ class Labphox:
             initial_time = time.time()
             end = False
             while not end:
-                time.sleep(self.communication_sleep_time)
+                time.sleep(self.packet_handler_sleep_time)
                 if self.input_buffer():
                     reply += self.read_buffer()
                 if end_sequence in reply[-5:]:
@@ -265,23 +281,21 @@ class Labphox:
                 s.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
                 end = False
                 while not end:
-                    time.sleep(self.communication_sleep_time)
+                    time.sleep(self.packet_handler_sleep_time)
                     packet = s.recvfrom(self.ETH_buff_size)[0]
-                    reply += packet.split(b';')[0]
+                    reply += packet
                     if end_sequence in reply[-5:]:
                         end = True
 
-                # try:
-                #   reply = reply.split(';')[0]
-                # except:
-                #   print(reply)
                 s.close()
 
             reply = reply.strip(end_sequence).strip(encoded_cmd)
             return reply[7:]
 
-    def raise_value_mismatch(self):
-        print('VALUE mismatch!')
+    def raise_value_mismatch(self, cmd, response):
+        print('Command mismatch!')
+        print('Command:', cmd)
+        print('Reply:', response['command'])
 
     def utility_cmd(self, cmd, value=0):
         response = False
@@ -503,7 +517,7 @@ class Labphox:
 
         return response
 
-    def FLASH_utils(self):
+    def FLASH_utils(self, path=None):
         found = False
         process = subprocess.Popen(['.\dfu-util', '-l'], shell=True,
                                    stdout=subprocess.PIPE,
@@ -524,7 +538,9 @@ class Labphox:
         else:
             print('Device found in', output.strip().strip('Found DFU: '))
 
-            process = subprocess.Popen('.\dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D .\Labphox.bin', shell=True,
+            if not path:
+                path = '.'
+            process = subprocess.Popen('.\dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D ' + path + '\Labphox.bin', shell=True,
                                        stdout=subprocess.PIPE,
                                        universal_newlines=True)
 
@@ -546,9 +562,5 @@ class Labphox:
 
 
 if __name__ == "__main__":
-    cryoswitch = Labphox(debug=True)  ##IP='192.168.1.6'
+    cryoswitch = Labphox(debug=True, IP='192.168.1.100')  ##IP='192.168.1.6'
 
-    cryoswitch.UPGRADE_cmd(cmd='stream_key', value=[52, 121, 7, 70, 32, 42, 86, 35, 5, 125, 1, 118])
-    cryoswitch.UPGRADE_cmd('upgrade', 4)
-    cryoswitch.application_cmd('pulse')
-    cryoswitch.scanI2C()
