@@ -30,12 +30,12 @@ class Cryoswitch:
         self.log_wav_dir = r'\data'
         self.align_edges = True
 
-        self.pulse_logging = False
+        self.pulse_logging = True
         self.pulse_logging_filename = r'pulse_logging.txt'
         self.log_pulses_to_display = 2
         self.warning_threshold_current = 60
 
-        self.track_states = False
+        self.track_states = True
         self.track_states_file = os.getcwd() + r'\states.json'
 
         self.__constants()
@@ -324,6 +324,40 @@ class Cryoswitch:
             with open(self.track_states_file, 'w') as outfile:
                 json.dump(states, outfile)
 
+    def get_switches_state(self, port=None):
+        file = open(self.track_states_file)
+        states = json.load(file)
+        file.close()
+
+        if self.ports_enabled == 1:
+            ports = ['A']
+        elif self.ports_enabled == 2:
+            ports = ['A', 'B']
+        elif self.ports_enabled == 3:
+            ports = ['A', 'B', 'C']
+        elif self.ports_enabled == 4:
+            ports = ['A', 'B', 'C', 'D']
+
+        if self.SN in states.keys():
+            if port in ports:
+                current_state = states[self.SN]
+                print('Port ' + port + ' state')
+                for switch in range(1, 7):
+                    state = current_state['port_' + port]['contact_' + str(switch)]
+                    if state:
+                        if switch == 1:
+                            print(str(switch) + ' ----' + chr(0x2510))
+                        else:
+                            print(str(switch) + ' ----' + chr(0x2524))
+                    else:
+                        print(str(switch) + ' -  -' + chr(0x2502))
+                print('      ' + chr(0x2514) + '- COM')
+                print('')
+
+            return states[self.SN]
+        else:
+            return None
+
 
     def log_waveform(self, port, contact, polarity, current_profile):
         current_data = pd.DataFrame({'current_wav': current_profile})
@@ -427,6 +461,28 @@ class Cryoswitch:
         else:
             print('Out of range: Port', port)
 
+    def disconnect_all(self, port):
+        for contact in range(1, 7):
+            self.disconnect(port, contact)
+    def smart_connect(self, port, contact, force=False):
+        states = self.get_switches_state()
+        port_state = states['port_' + port]
+        contacts = [1, 2, 3, 4, 5, 6]
+        contacts.remove(contact)
+        for other_contact in contacts:
+            if port_state['contact_' + str(other_contact)] == 1:
+                print('Disconnecting', other_contact)
+                self.disconnect(port, other_contact)
+
+        if port_state['contact_' + str(contact)] == 1:
+            print('Contact', contact, 'is already connected')
+            if force:
+                print('Connecting', contact)
+                self.connect(port, contact)
+        else:
+            print('Connecting', contact)
+            self.connect(port, contact)
+
     def get_power_status(self):
         return self.labphox.gpio_cmd('PWR_STATUS')
 
@@ -481,7 +537,7 @@ if __name__ == "__main__":
     switch = Cryoswitch(IP='192.168.1.100') ## -> CryoSwitch class declaration and USB connection
     switch.get_ip()
     ##switch.flash(path=r'C:\Users\Cristobal\Desktop\FW\STM32F4\Labphox\Debug')
-
+    switch.get_switches_state()
     switch.get_pulse_history(number_pulses=5, port='A')
     switch.start() ## -> Initialization of the internal hardware
     switch.plot = True ## -> Disable the current plotting function
