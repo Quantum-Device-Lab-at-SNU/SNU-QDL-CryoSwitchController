@@ -25,8 +25,8 @@ class Cryoswitch:
         self.current_switch_model = 'R583423141'
 
         self.decimals = 2
-        self.plot = False
-        self.log_wav = False
+        self.plot = True
+        self.log_wav = True
         self.log_wav_dir = r'\data'
         self.align_edges = True
 
@@ -130,7 +130,7 @@ class Cryoswitch:
             return True
 
     def get_HW_revision(self):
-        pass
+        return self.labphox.HW
 
     def enable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 1)
@@ -381,8 +381,8 @@ class Cryoswitch:
         with open(self.pulse_logging_filename, 'a') as logging_file:
             logging_file.write(pulse_string + warning_string + '\n')
 
-    def get_pulse_history(self, port=None, number_pulses=None):
-        if not number_pulses:
+    def get_pulse_history(self, port=None, pulse_number=None):
+        if not pulse_number:
             number_pulses = self.log_pulses_to_display
 
         with open(self.pulse_logging_filename, 'r') as logging_file:
@@ -536,19 +536,15 @@ if __name__ == "__main__":
 
     switch = Cryoswitch(IP='192.168.1.100') ## -> CryoSwitch class declaration and USB connection
     switch.get_ip()
-    ##switch.flash(path=r'C:\Users\Cristobal\Desktop\FW\STM32F4\Labphox\Debug')
-    switch.get_switches_state()
-    switch.get_pulse_history(number_pulses=5, port='A')
+
+    switch.get_pulse_history(pulse_number=5, port='A')
     switch.start() ## -> Initialization of the internal hardware
-    switch.plot = True ## -> Disable the current plotting function
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
     switch.connect(port='C', contact=1) ## Connect contact 1 of port A to the common terminal
     switch.disconnect(port='C', contact=1) ## Disconnects contact 1 of port A from the common terminal
+    switch.smart_connect(port='C', contact=1)
 
-    for vol in range(10, 25):
-        switch.set_output_voltage(vol)
-        switch.connect('C', 1)
 
 
 
