@@ -227,7 +227,7 @@ class Labphox:
             if standard:
                 response = {'reply': reply, 'command': reply.split(':')[:-1], 'value': reply.split(':')[-1]}
                 if not self.validate_reply(cmd, response):
-                    self.raise_value_mismatch()
+                    self.raise_value_mismatch(cmd, response)
             else:
                 response = reply
         except:
@@ -377,7 +377,12 @@ class Labphox:
         if self.compare_cmd(cmd, 'duration'):
             response = self.communication_handler('W:0:A:' + str(value) + ';')
             if int(response['value']) != int(value):
-                self.raise_value_mismatch()
+                self.raise_value_mismatch(cmd, response)
+
+        if self.compare_cmd(cmd, 'sampling'):
+            response = self.communication_handler('W:0:S:' + str(value) + ';')
+
+        return response
 
     def ADC_cmd(self, cmd, value=0):
         response = None
@@ -495,7 +500,20 @@ class Labphox:
             response = self.communication_handler('W:Q:I:' + str(int_IP) + ';')
         elif self.compare_cmd(cmd, 'get_ip_str'):
             response = self.communication_handler('W:Q:G:' + str(value) + ';')
-            print('IP:', socket.inet_ntoa(int(response['value']).to_bytes(4, 'little')))
+            IP = socket.inet_ntoa(int(response['value']).to_bytes(4, 'little'))
+            print('IP:', IP)
+            return IP
+
+        elif self.compare_cmd(cmd, 'set_mask_str'):
+            int_mask = int.from_bytes(socket.inet_aton(value), "little")
+            response = self.communication_handler('W:Q:K:' + str(int_mask) + ';')
+
+        elif self.compare_cmd(cmd, 'get_mask_str'):
+            response = self.communication_handler('W:Q:L:' + str(value) + ';')
+            print(response)
+            mask = socket.inet_ntoa(int(response['value']).to_bytes(4, 'little'))
+            print('Subnet mask:', mask)
+            return mask
 
         return response
 

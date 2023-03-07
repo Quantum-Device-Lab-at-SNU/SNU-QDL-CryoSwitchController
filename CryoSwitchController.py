@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import json
 import os
+import socket
 
 
 class Cryoswitch:
@@ -13,15 +14,17 @@ class Cryoswitch:
         self.debug = debug
         self.port = COM_port
         self.IP = IP
+        self.verbose = True
 
         self.labphox = Labphox(self.port, debug=self.debug, IP=self.IP, SN=SN)
         self.ports_enabled = self.labphox.N_channel
         self.SN = self.labphox.board_SN
+        self.HW_rev = self.get_HW_revision()
 
         self.wait_time = 0.1
         self.pulse_duration_ms = 10
         self.converter_voltage = 5
-        self.MEASURED_converter_voltage = None
+        self.MEASURED_converter_voltage = 0
         self.current_switch_model = 'R583423141'
 
         self.decimals = 2
@@ -38,10 +41,14 @@ class Cryoswitch:
         self.track_states = True
         self.track_states_file = os.getcwd() + r'\states.json'
 
+        self.constant_file_name = r'constants.json'
         self.__constants()
 
         if self.track_states:
             self.tracking_init()
+
+        if self.pulse_logging:
+            self.pulse_logging_init()
 
         if self.log_wav:
             if not os.path.isdir(os.getcwd() + self.log_wav_dir):
@@ -56,19 +63,38 @@ class Cryoswitch:
         if self.SN not in states.keys():
             states[self.SN] = states['SN']
             with open(self.track_states_file, 'w') as outfile:
-                json.dump(states, outfile)
+                json.dump(states, outfile, indent=4, sort_keys=True)
+
+    def pulse_logging_init(self):
+        if not os.path.isfile(self.pulse_logging_filename):
+            file = open(self.pulse_logging_filename, 'w')
+            file.close()
 
     def __constants(self):
-        self.ADC_12B_res = 4095
+        file = open(self.constant_file_name)
+        constants = json.load(file)[self.HW_rev]
+        file.close()
 
-        self.bv_R1 = 68
-        self.bv_R2 = 100
-        self.bv_ADC = 3
 
-        self.converter_divider = 11
-        self.converter_ADC = 10
+        self.ADC_12B_res = constants['ADC_12B_res']
+        self.ADC_8B_res = constants['ADC_8B_res']
 
-        self.current_sense_R = 1
+        self.bv_R1 = constants['bv_R1']
+        self.bv_R2 = constants['bv_R2']
+        self.bv_ADC = constants['bv_ADC']
+
+        self.converter_divider = constants['converter_divider']
+        self.converter_ADC = constants['converter_ADC']
+
+        self.converter_VREF = constants['converter_VREF']
+        self.converter_R1 = constants['converter_R1']
+        self.converter_R2 = constants['converter_R2']
+        self.converter_Rf = constants['converter_Rf']
+
+        self.OCP_gain = constants['OCP_gain']
+
+        self.current_sense_R = constants['current_sense_R']
+        self.current_gain = constants['current_gain']
 
         self.sampling_freq = 28000
 
@@ -136,14 +162,15 @@ class Cryoswitch:
         self.labphox.gpio_cmd('EN_CHGP', 1)
         time.sleep(2)
         bias_voltage = self.get_bias_voltage()
-        self.check_voltage(bias_voltage, -5, tolerance=0.1, pre_str='BIAS:')
+        if self.verbose:
+            self.check_voltage(bias_voltage, -5, tolerance=0.1, pre_str='BIAS STATUS:')
         return bias_voltage
 
     def disable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 0)
         return self.get_bias_voltage()
 
-    def set_output_voltage(self, Vout, verbose=False):
+    def set_output_voltage(self, Vout):
         if 5 <= Vout <= 28:
             self.converter_voltage = Vout
             if Vout > 10:
@@ -152,11 +179,7 @@ class Cryoswitch:
                 self.enable_negative_supply()
 
             self.labphox.DAC_cmd('on', DAC=1)
-            VREF = 1.23
-            R1 = 500000
-            R2 = 500000
-            Rf = 15000
-            code = int((VREF - (Vout - VREF * (1 + (R1 / R2)))*(Rf/R1))*(self.ADC_12B_res/self.labphox.adc_ref))
+            code = int((self.converter_VREF - (Vout - self.converter_VREF * (1 + (self.converter_R1 / self.converter_R2)))*(self.converter_Rf/self.converter_R1))*(self.ADC_12B_res/self.labphox.adc_ref))
 
             if code < 550 or code > 1500:
                 return False
@@ -166,16 +189,32 @@ class Cryoswitch:
                 time.sleep(1)
                 measured_voltage = self.get_converter_voltage()
                 tolerance = 0.1
-                if verbose:
-                    self.check_voltage(measured_voltage, Vout, tolerance=0.1, pre_str='CONVERTER:')
-                print("CONVERTER_STAT:", str(measured_voltage) + 'V')
+                if self.verbose:
+                    self.check_voltage(measured_voltage, Vout, tolerance=0.1, pre_str='CONVERTER STATUS:')
+                # print("CONVERTER STATUS:", str(measured_voltage) + 'V')
                 return measured_voltage
 
         else:
             print('Voltage outside of range (5-28V)')
 
     def enable_output_channels(self):
-        self.labphox.IO_expander_cmd('on')
+        enabled = False
+        counter = 0
+        while not enabled:
+            response = self.labphox.IO_expander_cmd('on')
+            if int(response['value']) == 0:
+                enabled = True
+            elif counter > 3:
+                break
+            counter += 1
+
+
+        if not int(response['value']) == 0:
+            print('Failed to enable output channels!', str(response['value']))
+        elif self.verbose and counter > 1:
+            print(counter, 'attempts to enable output channel')
+
+        return int(response['value'])
 
     def disable_output_channels(self):
         self.labphox.IO_expander_cmd('off')
@@ -205,7 +244,7 @@ class Cryoswitch:
         self.labphox.gpio_cmd('CHOPPING_EN', 0)
 
     def set_OCP_mA(self, value):
-        DAC_reg = int(value*(self.current_sense_R*20*self.ADC_12B_res/(2*1000*self.labphox.adc_ref)))
+        DAC_reg = int(value*(self.current_sense_R*self.current_gain*self.ADC_12B_res/(self.OCP_gain*1000*self.labphox.adc_ref)))
 
         if 0 < DAC_reg < 4095:
             self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
@@ -221,7 +260,7 @@ class Cryoswitch:
     def reset_output_supervisor(self):
         self.disable_converter()
         self.labphox.gpio_cmd('FORCE_PWR_EN', 1)
-        time.sleep(1)
+        time.sleep(0.5)
         self.labphox.gpio_cmd('FORCE_PWR_EN', 0)
         self.enable_converter()
 
@@ -229,13 +268,29 @@ class Cryoswitch:
         return self.labphox.gpio_cmd('PWR_STATUS')
 
     def set_pulse_duration_ms(self, ms_duration):
-        self.pulse_duration_ms = ms_duration
-        pulse_offset = 100
-        self.labphox.timer_cmd('duration', round(ms_duration*100 + pulse_offset))
+        if ms_duration <= 100:
+            self.pulse_duration_ms = ms_duration
+            pulse_offset = 100
+            self.labphox.timer_cmd('duration', round(ms_duration*100 + pulse_offset))
+            if self.verbose:
+                print('Pulse duration set to', str(ms_duration) + 'ms')
 
-    def send_pulse(self, plot=False):
+        else:
+            print('Pulse duration outside of range (1-100ms)')
 
-        current_gain = 1000 * self.labphox.adc_ref / (self.current_sense_R * 20 * 255)
+    def set_sampling_frequency_khz(self, f_khz):
+        if 10 <= f_khz <= 100:
+            self.labphox.timer_cmd('sampling', int(84000/f_khz))
+            self.sampling_freq = f_khz*1000
+        else:
+            print('Sampling frequency outside of range')
+
+    def send_pulse(self):
+        if not self.get_power_status():
+            print('WARNING: Timing protection triggered, resetting...')
+            self.reset_output_supervisor()
+
+        current_gain = 1000 * self.labphox.adc_ref / (self.current_sense_R * self.current_gain * self.ADC_8B_res)
 
         current_data = self.labphox.application_cmd('pulse', 1)
 
@@ -247,68 +302,104 @@ class Cryoswitch:
         if model.upper() == 'R583423141'.upper():
             self.current_switch_model = 'R583423141'
             self.labphox.IO_expander_cmd('type', value=1)
-            self.enable_output_channels()
 
         elif model.upper() == 'R573423600'.upper():
             self.current_switch_model = 'R573423600'
             self.labphox.IO_expander_cmd('type', value=2)
-            self.enable_output_channels()
+
+    def validate_selected_channel(self, number, polarity, reply):
+
+        if polarity and self.current_switch_model == 'R583423141':
+            shift_byte = 0b0110
+            offset = 0
+        elif not polarity and self.current_switch_model == 'R583423141':
+            shift_byte = 0b1001
+            offset = 0
+        elif polarity and self.current_switch_model == 'R573423600':
+            shift_byte = 0b10
+            offset = 4096
+        elif not polarity and self.current_switch_model == 'R573423600':
+            shift_byte = 0b01
+            offset = 8192
+        else:
+            shift_byte = 0
+            offset = 0
+
+        validation_id = (shift_byte << 2 * number) + offset
+        validation_id1 = validation_id & 255
+        validation_id2 = validation_id >> 8
+        if self.debug:
+            print('Validation ID, Received', reply['value'], '->Expected', validation_id1|validation_id2)
+
+        if int(reply['value']) != validation_id1|validation_id2:
+            print('Wrong channel validation ID')
+            return False
+        else:
+            return True
 
 
     def select_output_channel(self, port, number, polarity):
         if 0 < number < 7:
             number = number - 1
             if polarity:
-                self.labphox.IO_expander_cmd('connect', port, number)
+                reply = self.labphox.IO_expander_cmd('connect', port, number)
             else:
-                self.labphox.IO_expander_cmd('disconnect', port, number)
+                reply = self.labphox.IO_expander_cmd('disconnect', port, number)
+
+            return self.validate_selected_channel(number, polarity, reply)
         else:
             print('SW out of range')
+            return None
 
     def select_and_pulse(self, port, contact, polarity):
         if self.track_states:
             self.save_switch_state(port, contact, polarity)
 
         if polarity:
-            self.select_output_channel(port, contact, 1)
+            polarity = 1
             polarity_str = 'Connect'
         else:
-            self.select_output_channel(port, contact, 0)
+            polarity = 0
             polarity_str = 'Disconnect'
 
-        ##time.sleep(1)
-        current_profile = self.send_pulse()
-        self.disable_output_channels()
+        selection_result = self.select_output_channel(port, contact, polarity)
 
-        if self.plot:
-            sampling_period = 1 / self.sampling_freq
+        if selection_result:
+            current_profile = self.send_pulse()
+            self.disable_output_channels()
 
-            if self.align_edges:
-                edge = np.argmax(current_profile>0)
-                current_data = current_profile[edge:]
-            else:
-                current_data = current_profile
-            data_points = len(current_data)
-            x_axis = np.linspace(0, data_points*sampling_period, data_points)*1000
-            plt.plot(x_axis, current_data)
-            plt.xlabel('Time [ms]')
-            plt.ylabel('Current [mA]')
-            plt.title(time.strftime("%b-%m %H:%M:%S%p", time.gmtime()))
-            plt.suptitle('Port ' + port + '-' + str(contact) + ' ' + polarity_str)
+            if self.plot:
+                sampling_period = 1 / self.sampling_freq
+
+                if self.align_edges:
+                    edge = np.argmax(current_profile>0)
+                    current_data = current_profile[edge:]
+                else:
+                    current_data = current_profile
+                data_points = len(current_data)
+                x_axis = np.linspace(0, data_points*sampling_period, data_points)*1000
+                plt.plot(x_axis, current_data)
+                plt.xlabel('Time [ms]')
+                plt.ylabel('Current [mA]')
+                plt.title(time.strftime("%b-%m %H:%M:%S%p", time.gmtime()))
+                plt.suptitle('Port ' + port + '-' + str(contact) + ' ' + polarity_str)
 
 
-            if self.current_switch_model == 'R583423141':
-                plt.ylim(0, 100)
-            elif self.current_switch_model == 'R573423600':
-                plt.ylim(0, 200)
-            plt.grid()
-            plt.show()
+                if self.current_switch_model == 'R583423141':
+                    plt.ylim(0, 100)
+                elif self.current_switch_model == 'R573423600':
+                    plt.ylim(0, 200)
+                plt.grid()
+                plt.show()
 
-        if self.pulse_logging:
-            self.log_pulse(port, contact, polarity, current_profile.max())
-        if self.log_wav:
-            self.log_waveform(port, contact, polarity, current_profile)
-        return current_profile
+            if self.pulse_logging:
+                self.log_pulse(port, contact, polarity, current_profile.max())
+            if self.log_wav:
+                self.log_waveform(port, contact, polarity, current_profile)
+            return current_profile
+
+        else:
+            return []
 
     def save_switch_state(self, port, contact, polarity):
         file = open(self.track_states_file)
@@ -322,7 +413,7 @@ class Cryoswitch:
             states[SN][port][contact] = polarity
 
             with open(self.track_states_file, 'w') as outfile:
-                json.dump(states, outfile)
+                json.dump(states, outfile, indent=4, sort_keys=True)
 
     def get_switches_state(self, port=None):
         file = open(self.track_states_file)
@@ -383,7 +474,7 @@ class Cryoswitch:
 
     def get_pulse_history(self, port=None, pulse_number=None):
         if not pulse_number:
-            number_pulses = self.log_pulses_to_display
+            pulse_number = self.log_pulses_to_display
 
         with open(self.pulse_logging_filename, 'r') as logging_file:
             pulse_info = logging_file.readlines()
@@ -400,7 +491,7 @@ class Cryoswitch:
                 list_for_display.append(pulse)
                 counter += 1
 
-            if counter >= number_pulses:
+            if counter >= pulse_number:
                 break
 
         for idx, pulse in enumerate(list_for_display):
@@ -464,6 +555,7 @@ class Cryoswitch:
     def disconnect_all(self, port):
         for contact in range(1, 7):
             self.disconnect(port, contact)
+
     def smart_connect(self, port, contact, force=False):
         states = self.get_switches_state()
         port_state = states['port_' + port]
@@ -487,28 +579,36 @@ class Cryoswitch:
         return self.labphox.gpio_cmd('PWR_STATUS')
 
     def set_ip(self, add="192.168.1.101"):
-        add = add.split('.')
-        ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
-        self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
+        # add = add.split('.')
+        # ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
+        self.labphox.ETHERNET_cmd('set_ip_str', add)
 
     def get_ip(self):
-        response = self.labphox.ETHERNET_cmd('get_ip')
-        add = [0, 0, 0, 0]
-        # ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
-        # self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
-        int_ip = int(response['value'])
-        add[3] = int(int_ip / 16777216)
-        int_ip -= 16777216*add[3]
-        add[2] = int(int_ip / 65536)
-        int_ip -= 65536 * add[2]
-        add[1] = int(int_ip / 256)
-        int_ip -= 256 * add[1]
-        add[0] = int(int_ip)
+        add = self.labphox.ETHERNET_cmd('get_ip_str')
+        # add = [0, 0, 0, 0]
+        # # ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
+        # # self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
+        # int_ip = int(response['value'])
+        # add[3] = int(int_ip / 16777216)
+        # int_ip -= 16777216*add[3]
+        # add[2] = int(int_ip / 65536)
+        # int_ip -= 65536 * add[2]
+        # add[1] = int(int_ip / 256)
+        # int_ip -= 256 * add[1]
+        # add[0] = int(int_ip)
         print('IP:', add)
         return add
 
+    def set_sub_net_mask(self, mask='255.255.255.0'):
+        self.labphox.ETHERNET_cmd('set_mask_str', mask)
+
+    def get_sub_net_mask(self):
+        mask = self.labphox.ETHERNET_cmd('get_mask_str')
+        return mask
+
     def start(self):
-        print('Initialization...')
+        if self.verbose:
+            print('Initialization...')
         self.labphox.ADC_cmd('start')
 
         self.enable_3V3()
@@ -519,23 +619,45 @@ class Cryoswitch:
 
         self.set_pulse_duration_ms(15)
 
-        self.enable_output_channels()
         self.enable_converter()
         self.set_output_voltage(5)
 
-        time.sleep(0.5)
+        time.sleep(1)
+        self.enable_output_channels()
+        self.select_switch_model(self.current_switch_model)
+
         if not self.get_power_status():
-            print('PWR_STAT: Output not enabled')
+            if self.verbose:
+                print('POWER STATUS: Output not enabled')
         else:
-            print('PWR_STAT: Ready')
+            if self.verbose:
+                print('POWER STATUS: Ready')
 
 
 
 
 if __name__ == "__main__":
 
-    switch = Cryoswitch(IP='192.168.1.100') ## -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch() ## -> CryoSwitch class declaration and USB connection
+
+    switch.start()
+
+    switch.plot = True
+    switch.set_output_voltage(15)
+    switch.set_sampling_frequency_khz(28)
+    for i in range(1, 7):
+        switch.connect(port='C', contact=i)
+
+    switch.set_output_voltage(25)
+    switch.set_sampling_frequency_khz(100)
+    for i in range(1, 7):
+        switch.connect(port='C', contact=i)
+
+
     switch.get_ip()
+    switch.set_sub_net_mask()
+    switch.get_sub_net_mask()
+    switch.connect(port='C', contact=1)
 
     switch.get_pulse_history(pulse_number=5, port='A')
     switch.start() ## -> Initialization of the internal hardware

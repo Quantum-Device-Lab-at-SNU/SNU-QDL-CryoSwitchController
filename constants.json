@@ -1,0 +1,40 @@
+{
+  "HW_Ver. 2": {
+    "ADC_12B_res": 4095,
+    "ADC_8B_res": 255,
+    "bv_R1": 68000,
+    "bv_R2": 100000,
+    "bv_ADC": 3,
+
+    "converter_divider": 11,
+    "converter_ADC": 10,
+    "converter_VREF": 1.23,
+    "converter_R1": 500000,
+    "converter_R2": 500000,
+    "converter_Rf": 15000,
+
+    "OCP_gain": 2,
+
+    "current_sense_R": 1,
+    "current_gain": 20
+  },
+    "HW_Ver. 3": {
+    "ADC_12B_res": 4095,
+    "ADC_8B_res": 255,
+    "bv_R1": 68000,
+    "bv_R2": 100000,
+    "bv_ADC": 3,
+
+    "converter_divider": 11,
+    "converter_ADC": 10,
+    "converter_VREF": 1.23,
+    "converter_R1": 500000,
+    "converter_R2": 33000,
+    "converter_Rf": 56000,
+
+    "OCP_gain": 2,
+
+    "current_sense_R": 0.5,
+    "current_gain": 20
+  }
+}
