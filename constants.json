@@ -12,6 +12,8 @@
     "converter_R1": 500000,
     "converter_R2": 500000,
     "converter_Rf": 15000,
+    "converter_DAC_lower_bound": 550,
+    "converter_DAC_upper_bound": 1500,
 
     "OCP_gain": 2,
 
@@ -31,6 +33,8 @@
     "converter_R1": 500000,
     "converter_R2": 33000,
     "converter_Rf": 56000,
+    "converter_DAC_lower_bound": 0,
+    "converter_DAC_upper_bound": 4095,
 
     "OCP_gain": 2,
 
