@@ -2,7 +2,6 @@ import time
 import matplotlib.pyplot as plt
 from libphox import Labphox
 import numpy as np
-import pandas as pd
 import json
 import os
 
@@ -465,10 +464,12 @@ class Cryoswitch:
 
 
     def log_waveform(self, port, contact, polarity, current_profile):
-        current_data = pd.DataFrame({'current_wav': current_profile})
-        current_data.to_csv(
-            self.log_wav_dir + '/' + str(int(time.time())) + '_' + str(self.MEASURED_converter_voltage) + 'V_' + str(port) + str(
-                contact) + '_' + str(polarity) + '.csv')
+        name = self.log_wav_dir + '\\' + str(int(time.time())) + '_' + str(
+            self.MEASURED_converter_voltage) + 'V_' + str(port) + str(contact) + '_' + str(polarity) + '.json'
+        waveform = {'time':time.time(), 'voltage': self.MEASURED_converter_voltage, 'port': port, 'contact': contact, 'polarity':polarity, 'SF': self.sampling_freq,'data':list(current_profile)}
+        with open(name, 'w') as outfile:
+            json.dump(waveform, outfile, indent=4, sort_keys=True)
+
 
     def log_pulse(self, port, contact, polarity, max_current):
         if polarity:
@@ -593,23 +594,10 @@ class Cryoswitch:
         return self.labphox.gpio_cmd('PWR_STATUS')
 
     def set_ip(self, add="192.168.1.101"):
-        # add = add.split('.')
-        # ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
         self.labphox.ETHERNET_cmd('set_ip_str', add)
 
     def get_ip(self):
         add = self.labphox.ETHERNET_cmd('get_ip_str')
-        # add = [0, 0, 0, 0]
-        # # ip_num_value = 16777216 * int(add[3]) + 65536 * int(add[2]) + 256 * int(add[1]) + int(add[0])
-        # # self.labphox.ETHERNET_cmd('set_ip', ip_num_value)
-        # int_ip = int(response['value'])
-        # add[3] = int(int_ip / 16777216)
-        # int_ip -= 16777216*add[3]
-        # add[2] = int(int_ip / 65536)
-        # int_ip -= 65536 * add[2]
-        # add[1] = int(int_ip / 256)
-        # int_ip -= 256 * add[1]
-        # add[0] = int(int_ip)
         print('IP:', add)
         return add
 
@@ -631,7 +619,8 @@ class Cryoswitch:
         if self.verbose:
             print('Initialization...')
         self.labphox.ADC_cmd('start')
-        self.labphox.ADC3_cmd('start')
+        if '3' in self.HW_rev:
+            self.labphox.ADC3_cmd('start')
 
         self.enable_3V3()
         self.enable_5V()
@@ -659,7 +648,7 @@ class Cryoswitch:
 
 
 if __name__ == "__main__":
-    switch = Cryoswitch(debug=True) ##IP='192.168.1.101' -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch() ##IP='192.168.1.101' -> CryoSwitch class declaration and USB connection
     switch.start() ## -> Initialization of the internal hardware
 
     switch.get_pulse_history(pulse_number=5, port='A')
