@@ -5,16 +5,28 @@ import json
 import socket
 import numpy as np
 import subprocess
+import os
+import logging
+
+
 
 
 class Labphox:
+    _logger = logging.getLogger("libphox")
 
-    def __init__(self, port=None, debug=False, IP=None, cmd_logging=False, SN=None):
+    def __init__(self, port=None, debug=False, IP=None, cmd_logging=False, SN=None, HW_val=True):
         self.debug = debug
         self.time_out = 30
-        self.log = cmd_logging
 
-        self.SW_version = 2
+
+        if self.debug or cmd_logging:
+            self.log = True
+            self.logging_dir = r'\logging'
+            self.logger_init(self._logger)
+        else:
+            self.log = False
+
+        self.SW_version = 3
         self.board_SN = SN
         self.board_FW = None
 
@@ -28,7 +40,7 @@ class Labphox:
         self.ETH_buff_size = 1024
 
         self.communication_handler_sleep_time = 0
-        self.packet_handler_sleep_time = 0.001
+        self.packet_handler_sleep_time = 0
         if IP:
             self.USB_or_ETH = 2  # 1 for USB, 2 for ETH
             self.ETH_HOST = IP  # The server's IP address
@@ -38,9 +50,10 @@ class Labphox:
             self.USB_or_ETH = 1  # 1 for USB, 2 for ETH
             self.COM_port = port
 
-        self.connect()
+        self.connect(HW_val=HW_val)
 
-    def connect(self):
+
+    def connect(self, HW_val=True):
         if self.USB_or_ETH == 1:
             if self.COM_port:
                 pass
@@ -88,7 +101,7 @@ class Labphox:
             raise Exception(
                 "Couldn\'t connect, please check that the device is properly connected or try providing a valid SN, COM port or IP number")
 
-        elif self.board_FW != self.SW_version:
+        elif self.board_FW != self.SW_version and HW_val:
             raise Exception("Board Firmware version and Software version are not compatible, Board FW=" + str(
                 self.board_FW) + " while SW=" + str(self.SW_version))
 
@@ -106,7 +119,8 @@ class Labphox:
 
     def write(self, cmd):
         if self.log:
-            self.logging('actions', cmd)
+            pass
+            #self.logging('actions', cmd)
 
         if self.USB_or_ETH == 1:
             self.serial_com.write(cmd)
@@ -127,8 +141,51 @@ class Labphox:
     def decode_buffer(self):
         return list(self.read_buffer())
 
-    def debug_func(self, line):
-        print('Debug:', line)
+    def debug_func(self, cmd, reply):
+        print('Command', cmd)
+        print('Reply', reply)
+        print('')
+        # self._logger.debug(f'Debug: {cmd}')
+        self._logger.info(f'Debug: {cmd}')
+        self._logger.debug(f'Command: {cmd}')
+        self._logger.debug(f'Reply: {reply}')
+
+    def logger_init(self, logger_instance, outfolder=None):
+        logger_instance.setLevel(logging.DEBUG)
+
+        if outfolder is None:
+            outfolder = os.path.realpath('.') + self.logging_dir
+
+        os.makedirs(name=outfolder, exist_ok=True)
+
+        date_fmt = "%d/%m/%Y %H:%M:%S"
+
+        # remove all old handlers
+        for hdlr in logger_instance.handlers[:]:
+            logger_instance.removeHandler(hdlr)
+
+        # INFO level logger
+        # file logger
+        fmt = "[%(asctime)s] [%(levelname)s] %(message)s"
+        log_format = logging.Formatter(fmt=fmt, datefmt=date_fmt)
+
+        info_handler = logging.FileHandler(os.path.join(outfolder, 'info.log'))
+        info_handler.setFormatter(log_format)
+        info_handler.setLevel(logging.INFO)
+        logger_instance.addHandler(info_handler)
+
+        # DEBUG level logger
+        fmt = "[%(asctime)s] [%(levelname)s] [%(funcName)s(): line %(lineno)s] %(message)s"
+        log_format = logging.Formatter(fmt=fmt, datefmt=date_fmt)
+
+        debug_handler = logging.FileHandler(os.path.join(outfolder, 'debug.log'))
+        debug_handler.setFormatter(log_format)
+        debug_handler.setLevel(logging.DEBUG)
+        logger_instance.addHandler(debug_handler)
+
+        # _logger = logging.getLogger("libphox")
+
+        return logger_instance
 
     def read_line(self):
         if self.USB_or_ETH == 1:
@@ -234,7 +291,7 @@ class Labphox:
             print('Reply Error', reply)
 
         if self.debug:
-            self.debug_func(response)
+            self.debug_func(cmd, response)
 
 
 
@@ -405,6 +462,27 @@ class Labphox:
 
         return response
 
+
+    def ADC3_cmd(self, cmd, value=0):
+        response = None
+        if self.compare_cmd(cmd, 'channel'):
+            response = self.communication_handler('W:W:C:' + str(value) + ';')
+
+        elif self.compare_cmd(cmd, 'start'):
+            response = self.communication_handler('W:W:T:1;')
+
+        elif self.compare_cmd(cmd, 'stop'):
+            response = self.communication_handler('W:W:T:0;')
+
+        elif self.compare_cmd(cmd, 'select'):  ##Select and sample
+            response = self.communication_handler('W:W:S:' + str(value) + ';')
+
+        elif self.compare_cmd(cmd, 'get'):
+            response = self.communication_handler('W:W:G:;')
+            return int(response['value'])
+
+        return response
+
     def gpio_cmd(self, cmd, value=0):
         response = None
         if self.compare_cmd(cmd, 'EN_3V3'):
@@ -514,6 +592,9 @@ class Labphox:
             mask = socket.inet_ntoa(int(response['value']).to_bytes(4, 'little'))
             print('Subnet mask:', mask)
             return mask
+
+        elif self.compare_cmd(cmd, 'get_detection'):
+            response = self.communication_handler('W:Q:D:;')
 
         return response
 
