@@ -5,9 +5,6 @@ import numpy as np
 import json
 import os
 
-
-
-
 class Cryoswitch:
 
     def __init__(self, debug=False, COM_port='', IP=None, SN=None):
@@ -27,7 +24,7 @@ class Cryoswitch:
         self.MEASURED_converter_voltage = 0
         self.current_switch_model = 'R583423141'
 
-        self.abs_path = os.path.abspath(__file__).split('CryoSwitchController.py')[0]
+        self.abs_path = os.path.dirname(__file__) + '\\'
 
         self.decimals = 2
         self.plot = True
@@ -179,6 +176,17 @@ class Cryoswitch:
         self.labphox.gpio_cmd('EN_CHGP', 0)
         return self.get_bias_voltage()
 
+    def calculate_output_code(self, Vout):
+        code = int((self.converter_VREF - (
+                    Vout - self.converter_VREF * (1 + (self.converter_R1 / self.converter_R2))) * (
+                                self.converter_Rf / self.converter_R1)) * (self.ADC_12B_res / self.measured_adc_ref))
+
+        if code < self.converter_DAC_lower_bound or code > self.converter_DAC_upper_bound:
+            print('Wrong DAC value, dont mess with the DAC. DAC angry.')
+            return False
+
+        return code
+
     def set_output_voltage(self, Vout):
         if 5 <= Vout <= 28:
             self.converter_voltage = Vout
@@ -188,12 +196,9 @@ class Cryoswitch:
                 self.enable_negative_supply()
 
             self.labphox.DAC_cmd('on', DAC=1)
-            code = int((self.converter_VREF - (Vout - self.converter_VREF * (1 + (self.converter_R1 / self.converter_R2)))*(self.converter_Rf/self.converter_R1))*(self.ADC_12B_res/self.measured_adc_ref))
+            code = self.calculate_output_code(Vout)
 
-            if code < self.converter_DAC_lower_bound or code > self.converter_DAC_upper_bound:
-                print('Wrong DAC value, dont mess with the DAC. DAC angry.')
-                return False
-            else:
+            if code:
                 self.labphox.DAC_cmd('set', DAC=1, value=code)
 
                 time.sleep(1)
@@ -201,11 +206,12 @@ class Cryoswitch:
                 tolerance = 0.1
                 if self.verbose:
                     self.check_voltage(measured_voltage, Vout, tolerance=tolerance, pre_str='CONVERTER STATUS:')
-                # print("CONVERTER STATUS:", str(measured_voltage) + 'V')
-                return measured_voltage
 
+                return measured_voltage
         else:
             print('Voltage outside of range (5-28V)')
+
+        return False
 
     def enable_output_channels(self):
         enabled = False
@@ -312,7 +318,6 @@ class Cryoswitch:
 
 
     def select_switch_model(self, model='R583423141'):
-
         if model.upper() == 'R583423141'.upper():
             self.current_switch_model = 'R583423141'
             self.labphox.IO_expander_cmd('type', value=1)
@@ -322,7 +327,6 @@ class Cryoswitch:
             self.labphox.IO_expander_cmd('type', value=2)
 
     def validate_selected_channel(self, number, polarity, reply):
-
         if polarity and self.current_switch_model == 'R583423141':
             shift_byte = 0b0110
             offset = 0
@@ -606,6 +610,7 @@ class Cryoswitch:
 
     def get_sub_net_mask(self):
         mask = self.labphox.ETHERNET_cmd('get_mask_str')
+        print('Subnet Mask:', mask)
         return mask
 
     def get_V_ref(self):
@@ -645,18 +650,16 @@ class Cryoswitch:
                 print('POWER STATUS: Ready')
 
 
-
-
 if __name__ == "__main__":
     switch = Cryoswitch() ##IP='192.168.1.101' -> CryoSwitch class declaration and USB connection
     switch.start() ## -> Initialization of the internal hardware
 
-    switch.get_pulse_history(pulse_number=5, port='A')
+    switch.get_pulse_history(pulse_number=5, port='A') ##-> Show the last 5 pulses send through on port A
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
     switch.connect(port='C', contact=1) ## Connect contact 1 of port A to the common terminal
     switch.disconnect(port='C', contact=1) ## Disconnects contact 1 of port A from the common terminal
-    switch.smart_connect(port='C', contact=1)
+    switch.smart_connect(port='C', contact=1) ## Connect contact 1 and disconnect wichever port was connected previously (based on the history)
 
 
 

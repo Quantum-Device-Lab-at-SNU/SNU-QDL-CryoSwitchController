@@ -9,8 +9,6 @@ import os
 import logging
 
 
-
-
 class Labphox:
     _logger = logging.getLogger("libphox")
 
@@ -102,7 +100,7 @@ class Labphox:
                 "Couldn\'t connect, please check that the device is properly connected or try providing a valid SN, COM port or IP number")
 
         elif self.board_FW != self.SW_version and HW_val:
-            raise Exception("Board Firmware version and Software version are not compatible, Board FW=" + str(
+            print("Board Firmware version and Software version are not up to date, Board FW=" + str(
                 self.board_FW) + " while SW=" + str(self.SW_version))
 
     def disconnect(self):
