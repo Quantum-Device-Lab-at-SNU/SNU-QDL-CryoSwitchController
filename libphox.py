@@ -327,7 +327,7 @@ class Labphox:
                 elif (time.time() - initial_time) > self.time_out:
                     raise Exception("LABPHOX time out exceeded", self.time_out, 's')
 
-            reply = reply.strip(end_sequence).strip(encoded_cmd)
+            reply = reply.replace(end_sequence, b'').replace(encoded_cmd, b'')
 
             return reply
 
@@ -344,7 +344,7 @@ class Labphox:
 
                 s.close()
 
-            reply = reply.strip(end_sequence).strip(encoded_cmd)
+            reply = reply.replace(end_sequence, b'').replace(encoded_cmd, b'')
             return reply[7:]
 
     def raise_value_mismatch(self, cmd, response):
@@ -506,6 +506,10 @@ class Labphox:
 
         elif self.compare_cmd(cmd, 'PWR_STATUS'):
             response = self.communication_handler('W:1:H:0;')
+            return int(response['value'])
+
+        elif self.compare_cmd(cmd, 'OCP_OUT_STATUS'):
+            response = self.communication_handler('W:1:I:0;')
             return int(response['value'])
 
         return response

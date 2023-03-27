@@ -19,7 +19,7 @@ class Cryoswitch:
         self.HW_rev = self.get_HW_revision()
 
         self.wait_time = 0.1
-        self.pulse_duration_ms = 10
+        self.pulse_duration_ms = 15
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = 0
         self.current_switch_model = 'R583423141'
@@ -40,7 +40,7 @@ class Cryoswitch:
         self.track_states = True
         self.track_states_file = self.abs_path + r'states.json'
 
-        self.constant_file_name = self.abs_path + r'constants.json'
+        self.constants_file_name = self.abs_path + r'constants.json'
         self.__constants()
 
         if self.track_states:
@@ -50,10 +50,7 @@ class Cryoswitch:
             self.pulse_logging_init()
 
         if self.log_wav:
-            if not os.path.isdir(self.log_wav_dir):
-                os.mkdir(self.log_wav_dir)
-
-
+            self.log_wav_init()
 
     def tracking_init(self):
         file = open(self.track_states_file)
@@ -69,11 +66,14 @@ class Cryoswitch:
             file = open(self.pulse_logging_filename, 'w')
             file.close()
 
+    def log_wav_init(self):
+        if not os.path.isdir(self.log_wav_dir):
+            os.mkdir(self.log_wav_dir)
+
     def __constants(self):
-        file = open(self.constant_file_name)
+        file = open(self.constants_file_name)
         constants = json.load(file)[self.HW_rev]
         file.close()
-
 
         self.ADC_12B_res = constants['ADC_12B_res']
         self.ADC_8B_res = constants['ADC_8B_res']
@@ -102,7 +102,10 @@ class Cryoswitch:
         if self.HW_rev == 'HW_Ver. 2':
             self.measured_adc_ref = self.labphox.adc_ref
         elif self.HW_rev == 'HW_Ver. 3':
-            self.measured_adc_ref = self.get_V_ref()
+            ref_values = []
+            for it in range(5):
+                ref_values.append(self.get_V_ref())
+            self.measured_adc_ref = sum(ref_values) / len(ref_values)
 
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
@@ -270,6 +273,9 @@ class Cryoswitch:
             self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
         else:
             print('Over current protection outside of range')
+
+    def get_OCP_status(self):
+        return self.labphox.gpio_cmd('OCP_OUT_STATUS')
 
     def enable_chopping(self):
         self.labphox.gpio_cmd('CHOPPING_EN', 1)
@@ -615,7 +621,7 @@ class Cryoswitch:
 
     def get_V_ref(self):
         self.labphox.ADC3_cmd('select', 8)
-        time.sleep(0.5)
+        time.sleep(0.2)
         Ref_2V5 = self.labphox.ADC3_cmd('get')
         ADC_ref = 2.5*4095/Ref_2V5
         return round(ADC_ref, 4)
