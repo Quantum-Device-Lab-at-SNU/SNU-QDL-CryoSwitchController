@@ -396,6 +396,8 @@ class Labphox:
             sel_DAC = 5
         elif DAC == 2:
             sel_DAC = 8
+        else:
+            return None
 
         if self.compare_cmd(cmd, 'on'):
             response = self.communication_handler('W:' + str(sel_DAC) + ':T:1;')
@@ -619,8 +621,9 @@ class Labphox:
         return response
 
     def FLASH_utils(self, path=None):
+        DFU_name = '0483:df11'
         found = False
-        process = subprocess.Popen(['.\dfu-util', '-l'], shell=True,
+        process = subprocess.Popen(['.\FW\dfu-util', '-l'], shell=True,
                                    stdout=subprocess.PIPE,
                                    universal_newlines=True)
 
@@ -629,7 +632,7 @@ class Labphox:
         output = ''
         while exc_time < self.time_out:
             output = process.stdout.readline()
-            if 'Internal Flash' in output and 'Found DFU: [0483:df11]' in output:
+            if 'Internal Flash' in output and 'Found DFU: [' + DFU_name + ']' in output:
                 found = True
                 break
             exc_time = time.time() - start_time
@@ -641,7 +644,7 @@ class Labphox:
 
             if not path:
                 path = '.'
-            process = subprocess.Popen('.\dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D ' + path + '\Labphox.bin', shell=True,
+            process = subprocess.Popen('.\FW\dfu-util -d ' + DFU_name + ' -a 0 -s 0x08000000:leave -D ' + path + '\FW\Labphox.bin', shell=True,
                                        stdout=subprocess.PIPE,
                                        universal_newlines=True)
 
