@@ -83,7 +83,7 @@ class Labphox:
                 print('Connected to ' + self.name + ' on COM port ' + self.COM_port + ', PID:',
                       str(self.PID) + ', SerialN: ' + str(self.board_SN) + ', Channels:' + str(self.N_channel))
             except:
-                print('ERROR: Couldn\'t connect')
+                print('ERROR: Couldn\'t connect via serial')
 
         elif self.USB_or_ETH == 2:
             socket.setdefaulttimeout(self.time_out)
