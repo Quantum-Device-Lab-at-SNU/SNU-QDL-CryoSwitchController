@@ -22,7 +22,7 @@ class Cryoswitch:
         self.pulse_duration_ms = 15
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = 0
-        self.current_switch_model = 'R583423141'
+        self.current_switch_model = ''
 
         self.abs_path = os.path.dirname(__file__) + '\\'
 
@@ -34,7 +34,7 @@ class Cryoswitch:
 
         self.pulse_logging = True
         self.pulse_logging_filename = self.abs_path + r'pulse_logging.txt'
-        self.log_pulses_to_display = 2
+        self.log_pulses_to_display = 5
         self.warning_threshold_current = 60
 
         self.track_states = True
@@ -99,13 +99,13 @@ class Cryoswitch:
 
         self.sampling_freq = 28000
 
-        if self.HW_rev == 'HW_Ver. 2':
-            self.measured_adc_ref = self.labphox.adc_ref
-        elif self.HW_rev == 'HW_Ver. 3':
+        if self.HW_rev == 'HW_Ver. 3':
             ref_values = []
             for it in range(5):
                 ref_values.append(self.get_V_ref())
             self.measured_adc_ref = sum(ref_values) / len(ref_values)
+        else:
+            self.measured_adc_ref = self.labphox.adc_ref
 
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
@@ -191,7 +191,7 @@ class Cryoswitch:
         return code
 
     def set_output_voltage(self, Vout):
-        if 5 <= Vout <= 28:
+        if 5 <= Vout <= 30:
             self.converter_voltage = Vout
             if Vout > 10:
                 self.disable_negative_supply()
@@ -327,10 +327,14 @@ class Cryoswitch:
         if model.upper() == 'R583423141'.upper():
             self.current_switch_model = 'R583423141'
             self.labphox.IO_expander_cmd('type', value=1)
+            return True
 
         elif model.upper() == 'R573423600'.upper():
             self.current_switch_model = 'R573423600'
             self.labphox.IO_expander_cmd('type', value=2)
+            return True
+        else:
+            return False
 
     def validate_selected_channel(self, number, polarity, reply):
         if polarity and self.current_switch_model == 'R583423141':
@@ -531,8 +535,6 @@ class Cryoswitch:
             print(raw_data[0] + ', ' + time.strftime("%a %b-%m %H:%M:%S%p", pulse_time) + ' ' + extra_text)
 
     def connect(self, port, contact):
-        send_pulse = False
-
         if port == 'A' and self.ports_enabled >= 1:
             send_pulse = True
         elif port == 'B' and self.ports_enabled >= 2:
@@ -543,6 +545,7 @@ class Cryoswitch:
             send_pulse = True
         else:
             print('Port', port, 'not enabled')
+            return None
 
         if send_pulse and (0 < contact < 7):
             if self.debug:
@@ -555,8 +558,6 @@ class Cryoswitch:
             return None
 
     def disconnect(self, port, contact):
-        send_pulse = False
-
         if port == 'A' and self.ports_enabled >= 1:
             send_pulse = True
         elif port == 'B' and self.ports_enabled >= 2:
@@ -567,6 +568,7 @@ class Cryoswitch:
             send_pulse = True
         else:
             print('Port', port, 'not enabled')
+            return None
 
         if send_pulse and (0 < contact < 7):
             if self.debug:
@@ -595,15 +597,17 @@ class Cryoswitch:
             print('Contact', contact, 'is already connected')
             if force:
                 print('Connecting', contact)
-                self.connect(port, contact)
+                return self.connect(port, contact)
         else:
             print('Connecting', contact)
-            self.connect(port, contact)
+            return self.connect(port, contact)
+
+        return None
 
     def get_power_status(self):
         return self.labphox.gpio_cmd('PWR_STATUS')
 
-    def set_ip(self, add="192.168.1.101"):
+    def set_ip(self, add='192.168.1.101'):
         self.labphox.ETHERNET_cmd('set_ip_str', add)
 
     def get_ip(self):
@@ -646,27 +650,27 @@ class Cryoswitch:
 
         time.sleep(1)
         self.enable_output_channels()
-        self.select_switch_model(self.current_switch_model)
+        self.select_switch_model('R583423141')
 
         if not self.get_power_status():
             if self.verbose:
-                print('POWER STATUS: Output not enabled')
+                print('POWER STATUS: Output voltage not enabled')
         else:
             if self.verbose:
                 print('POWER STATUS: Ready')
 
 
 if __name__ == "__main__":
-    switch = Cryoswitch() ##IP='192.168.1.101' -> CryoSwitch class declaration and USB connection
+    switch = Cryoswitch(IP='192.168.1.101') ## -> CryoSwitch class declaration and USB connection
+
     switch.start() ## -> Initialization of the internal hardware
 
     switch.get_pulse_history(pulse_number=5, port='A') ##-> Show the last 5 pulses send through on port A
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
-    switch.connect(port='C', contact=1) ## Connect contact 1 of port A to the common terminal
-    switch.disconnect(port='C', contact=1) ## Disconnects contact 1 of port A from the common terminal
-    switch.smart_connect(port='C', contact=1) ## Connect contact 1 and disconnect wichever port was connected previously (based on the history)
-
+    switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
+    switch.disconnect(port='A', contact=1) ## Disconnects contact 1 of port A from the common terminal
+    switch.smart_connect(port='A', contact=1) ## Connect contact 1 and disconnect wichever port was connected previously (based on the history)
 
 
 
