@@ -31,6 +31,7 @@ class Cryoswitch:
         self.log_wav = True
         self.log_wav_dir = self.abs_path + r'data'
         self.align_edges = True
+        self.plot_polarization = True
 
         self.pulse_logging = True
         self.pulse_logging_filename = self.abs_path + r'pulse_logging.txt'
@@ -110,6 +111,13 @@ class Cryoswitch:
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
 
+    def get_UIDs(self):
+        UID0 = int(self.labphox.utility_cmd('UID', 0))
+        UID1 = int(self.labphox.utility_cmd('UID', 1))
+        UID2 = int(self.labphox.utility_cmd('UID', 2))
+
+        return [UID0, UID1, UID2]
+
     def flash(self, path=None):
         reply = input('Are you sure you want to flash the device?')
         if 'Y' in reply.upper():
@@ -166,6 +174,24 @@ class Cryoswitch:
 
     def get_HW_revision(self):
         return self.labphox.HW
+
+    def get_internal_temperature(self):
+        self.labphox.ADC_cmd('select', 16)
+        time.sleep(0.2)
+        code = self.labphox.ADC_cmd('get')
+
+        VSENSE = self.measured_adc_ref * code / self.ADC_12B_res
+        V25 = 0.76
+        Avg_Slope = 0.0025
+        temp = ((VSENSE - V25) / Avg_Slope) + 25
+        return temp
+
+    def get_V_ref(self):
+        self.labphox.ADC3_cmd('select', 8)
+        time.sleep(0.2)
+        Ref_2V5 = self.labphox.ADC3_cmd('get')
+        ADC_ref = 2.5*4095/Ref_2V5
+        return round(ADC_ref, 4)
 
     def enable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 1)
@@ -311,6 +337,22 @@ class Cryoswitch:
         else:
             print('Sampling frequency outside of range')
 
+    def calculate_polarization_current_mA(self, voltage=None, resistance=None):
+        if not voltage:
+            voltage = self.MEASURED_converter_voltage
+
+        if self.converter_voltage <= 10:
+            th_current = (voltage - 2.2) / 4700 + (voltage - 0.2 + 5) / 3000 + (voltage - 3) / 4700
+        elif self.converter_voltage < 15:
+            th_current = (voltage - 2.2) / 4700 + (voltage - 0.2) / 3000 + (voltage - 3) / 4700
+        else:
+            th_current = (voltage - 2.2) / 4700 + (voltage - 10) / 1000 + (voltage - 3) / 4700
+
+        if resistance:
+            th_current += voltage / resistance
+
+        return round(th_current*1000, 1)
+
     def send_pulse(self):
         if not self.get_power_status():
             print('WARNING: Timing protection triggered, resetting...')
@@ -406,6 +448,8 @@ class Cryoswitch:
                 data_points = len(current_data)
                 x_axis = np.linspace(0, data_points*sampling_period, data_points)*1000
                 plt.plot(x_axis, current_data)
+                if self.plot_polarization:
+                    plt.hlines(self.calculate_polarization_current_mA(), x_axis[0], x_axis[-1], colors='red', linestyles='dashed')
                 plt.xlabel('Time [ms]')
                 plt.ylabel('Current [mA]')
                 plt.title(time.strftime("%b-%m %H:%M:%S%p", time.gmtime()))
@@ -582,6 +626,8 @@ class Cryoswitch:
     def disconnect_all(self, port):
         for contact in range(1, 7):
             self.disconnect(port, contact)
+        if self.plot:
+            plt.legend([1, 2, 3, 4, 5, 6])
 
     def smart_connect(self, port, contact, force=False):
         states = self.get_switches_state()
@@ -623,13 +669,6 @@ class Cryoswitch:
         print('Subnet Mask:', mask)
         return mask
 
-    def get_V_ref(self):
-        self.labphox.ADC3_cmd('select', 8)
-        time.sleep(0.2)
-        Ref_2V5 = self.labphox.ADC3_cmd('get')
-        ADC_ref = 2.5*4095/Ref_2V5
-        return round(ADC_ref, 4)
-
     def start(self):
         if self.verbose:
             print('Initialization...')
@@ -665,13 +704,11 @@ if __name__ == "__main__":
 
     switch.start() ## -> Initialization of the internal hardware
 
+    switch.get_internal_temperature()
     switch.get_pulse_history(pulse_number=5, port='A') ##-> Show the last 5 pulses send through on port A
     switch.set_output_voltage(5) ## -> Set the output pulse voltage to 5V
 
     switch.connect(port='A', contact=1) ## Connect contact 1 of port A to the common terminal
     switch.disconnect(port='A', contact=1) ## Disconnects contact 1 of port A from the common terminal
     switch.smart_connect(port='A', contact=1) ## Connect contact 1 and disconnect wichever port was connected previously (based on the history)
-
-
-
 
