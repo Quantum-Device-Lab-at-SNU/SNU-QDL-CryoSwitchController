@@ -7,7 +7,7 @@ import os
 
 class Cryoswitch:
 
-    def __init__(self, debug=False, COM_port='', IP=None, SN=None):
+    def __init__(self, debug=False, COM_port='', IP=None, SN=None, override_abspath=False):
         self.debug = debug
         self.port = COM_port
         self.IP = IP
@@ -23,8 +23,11 @@ class Cryoswitch:
         self.converter_voltage = 5
         self.MEASURED_converter_voltage = 0
         self.current_switch_model = ''
-
-        self.abs_path = os.path.dirname(__file__) + '\\'
+        
+        if override_abspath:
+            self.abs_path = override_abspath+'\\'
+        else:
+            self.abs_path = os.path.dirname(__file__) + '\\'
 
         self.decimals = 2
         self.plot = True
