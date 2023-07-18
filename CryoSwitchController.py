@@ -295,13 +295,14 @@ class Cryoswitch:
         self.labphox.gpio_cmd('CHOPPING_EN', 1)
         self.labphox.gpio_cmd('CHOPPING_EN', 0)
 
-    def set_OCP_mA(self, value):
-        DAC_reg = int(value*(self.current_sense_R*self.current_gain*self.ADC_12B_res/(self.OCP_gain*1000*self.measured_adc_ref)))
-
-        if 0 < DAC_reg < 4095:
-            self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
-        else:
-            print('Over current protection outside of range')
+    def set_OCP_mA(self, OCP_value):
+        if 1 <= OCP_value <= 500:
+            DAC_reg = int(OCP_value*(self.current_sense_R*self.current_gain*self.ADC_12B_res/(self.OCP_gain*1000*self.measured_adc_ref)))
+            if 0 < DAC_reg < 4095:
+                self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
+                return None
+        print('Over current protection outside of range 1-500mA')
+        return None
 
     def get_OCP_status(self):
         return self.labphox.gpio_cmd('OCP_OUT_STATUS')
@@ -323,7 +324,7 @@ class Cryoswitch:
         return self.labphox.gpio_cmd('PWR_STATUS')
 
     def set_pulse_duration_ms(self, ms_duration):
-        if ms_duration <= 100:
+        if 1 <= ms_duration <= 100:
             self.pulse_duration_ms = ms_duration
             pulse_offset = 100
             self.labphox.timer_cmd('duration', round(ms_duration*100 + pulse_offset))
@@ -444,7 +445,7 @@ class Cryoswitch:
                 sampling_period = 1 / self.sampling_freq
 
                 if self.align_edges:
-                    edge = np.argmax(current_profile>0)
+                    edge = np.argmax(current_profile > 0)
                     current_data = current_profile[edge:]
                 else:
                     current_data = current_profile
