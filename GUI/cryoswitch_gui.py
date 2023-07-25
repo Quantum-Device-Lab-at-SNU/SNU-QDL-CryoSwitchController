@@ -1,3 +1,5 @@
+_VERSION="v1.0" # nopep8
+
 import hashlib
 import json
 import os
@@ -544,7 +546,7 @@ class CSCApp(QWidget):
         help_info_label.setStyleSheet("color: gray;")
         grid.addWidget(help_info_label, 10, 0, 1, 8)
         # self.setGeometry(300, 300, 800, 600)
-        self.setWindowTitle("CryoSwitch Control Panel v1.0")
+        self.setWindowTitle(f"CryoSwitch Control Panel {_VERSION}")
         self.show()
 
     def update_plot_data(self):
