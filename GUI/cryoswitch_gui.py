@@ -155,7 +155,7 @@ class GridButton(QPushButton):
         self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.right_click)
         self.clicked.connect(self.left_click)
-        self.cs = functionality_IDs['CS']
+        self.cs = functionality_IDs["CS"]
         self.measurement_ID = f"{self.functionality_IDs['port']}/{self.functionality_IDs['contact']}/{self.functionality_IDs['button']}"
 
     def left_click(self):
@@ -167,25 +167,25 @@ class GridButton(QPushButton):
         self.darken()
         # Process information
 
-        if self.functionality_IDs['contact'] == "ALL":
+        if self.functionality_IDs["contact"] == "ALL":
             for btn in self.buttonallies:
                 btn.left_click()
         else:
             self.update_parameters()
 
-            if self.functionality_IDs['button'] == "conn":
+            if self.functionality_IDs["button"] == "conn":
                 self.cs.internal_measured_A[self.measurement_ID] = (
                     self.cs.connect(
-                        port=self.functionality_IDs['port'],
-                        contact=self.functionality_IDs['contact'],
+                        port=self.functionality_IDs["port"],
+                        contact=self.functionality_IDs["contact"],
                     )
                     / 1000
                 )  # turn into smart connect and then also change button logic? - no, but see if it was disconnected before
-            elif self.functionality_IDs['button'] == "disc":
+            elif self.functionality_IDs["button"] == "disc":
                 self.cs.internal_measured_A[self.measurement_ID] = (
                     self.cs.disconnect(
-                        port=self.functionality_IDs['port'],
-                        contact=self.functionality_IDs['contact'],
+                        port=self.functionality_IDs["port"],
+                        contact=self.functionality_IDs["contact"],
                     )
                     / 1000
                 )
@@ -208,10 +208,10 @@ class GridButton(QPushButton):
 
     def update_parameters(self):
         self.data_validation()
-        voltage_V = float(self.functionality_IDs['voltage'].text().replace(",", "."))
-        duration_ms = float(self.functionality_IDs['duration'].text().replace(",", "."))
-        current_mA = float(self.functionality_IDs['OCP'].text().replace(",", "."))
-        chopping_enabled = self.functionality_IDs['chopping'].isChecked()
+        voltage_V = float(self.functionality_IDs["voltage"].text().replace(",", "."))
+        duration_ms = float(self.functionality_IDs["duration"].text().replace(",", "."))
+        current_mA = float(self.functionality_IDs["OCP"].text().replace(",", "."))
+        chopping_enabled = self.functionality_IDs["chopping"].isChecked()
 
         if self.cs.converter_voltage != voltage_V:
             self.cs.set_output_voltage(voltage_V)
@@ -228,10 +228,9 @@ class GridButton(QPushButton):
             self.cs.internal_chopping_tracked = chopping_enabled
 
     def data_validation(self):
-        self.limit_checker('voltage', 5, 30)
-        self.limit_checker('duration', 1, 100)
-        self.limit_checker('OCP', 1, 500)
-
+        self.limit_checker("voltage", 5, 30)
+        self.limit_checker("duration", 1, 100)
+        self.limit_checker("OCP", 1, 500)
 
     # def enter_pressed(self, event):
     #     if event.key() in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return):
@@ -257,13 +256,13 @@ class GridButton(QPushButton):
 
     def right_click(self):
         if (
-            self.functionality_IDs['contact'] != "ALL"
+            self.functionality_IDs["contact"] != "ALL"
         ):  # TODO: multiplot could be cool but isn't implemented
-            if self.functionality_IDs['button'] == "conn":
+            if self.functionality_IDs["button"] == "conn":
                 operation = "connection"
-            elif self.functionality_IDs['button'] == "disc":
+            elif self.functionality_IDs["button"] == "disc":
                 operation = "disconnection"
-            self.functionality_IDs['plot'].setText(
+            self.functionality_IDs["plot"].setText(
                 f"Current draw during last {operation} of port {self.functionality_IDs['port']} contact {self.functionality_IDs['contact']}"
             )
             __main__.__dict__["last_meas_ID"] = self.measurement_ID
@@ -287,10 +286,12 @@ class CSCApp(QWidget):
             IP = input(
                 "The initialization failed because of a network timeout. Please provide the correct IP address: "
             )
-            self.cs = Cryoswitch(IP=IP)
             with open(settings_file, "w") as f:
                 settings["IP"] = IP
                 json.dump(settings, f, indent=4)
+            self.cs = Cryoswitch(
+                IP=IP, override_abspath=os.path.dirname(script_filename)
+            )
 
         # General layout options
         self.N_ports = self.cs.ports_enabled
@@ -443,19 +444,17 @@ class CSCApp(QWidget):
                             parent=self,
                             colorscheme={"dark": colors_dark[j], "neutral": colors[j]},
                             # 0 is cs, 1 is V QE, 2 is ms QE, 3 is mA QE, 4 is port, 5 is contact, 6 is conn disc, 7 is chopping chb, 8 is plot label
-                            functionality_IDs = {
-                                'CS': self.cs,
-                                'voltage': voltage_lineedit,
-                                'duration': duration_lineedit,
-                                'OCP': OCP_lineedit,
-                                'port': labphoxch_startsfrom1_formatted,
-                                'contact': channel,
-                                'button': buttonfn,
-                                'chopping': chopping_checkbox,
-                                'plot': plot_label
-
+                            functionality_IDs={
+                                "CS": self.cs,
+                                "voltage": voltage_lineedit,
+                                "duration": duration_lineedit,
+                                "OCP": OCP_lineedit,
+                                "port": labphoxch_startsfrom1_formatted,
+                                "contact": channel,
+                                "button": buttonfn,
+                                "chopping": chopping_checkbox,
+                                "plot": plot_label,
                             },
-
                             # functionality_IDs=[
                             #     self.cs,
                             #     voltage_lineedit,
@@ -467,7 +466,6 @@ class CSCApp(QWidget):
                             #     chopping_checkbox,
                             #     plot_label,
                             # ],
-
                             buttonfriends=buttonfriends[
                                 f"{labphoxch_startsfrom1}/{channel}/{buttonfn}"
                             ],
@@ -546,7 +544,7 @@ class CSCApp(QWidget):
         help_info_label.setStyleSheet("color: gray;")
         grid.addWidget(help_info_label, 10, 0, 1, 8)
         # self.setGeometry(300, 300, 800, 600)
-        self.setWindowTitle("CryoSwitch Control Panel")
+        self.setWindowTitle("CryoSwitch Control Panel v1.0")
         self.show()
 
     def update_plot_data(self):
