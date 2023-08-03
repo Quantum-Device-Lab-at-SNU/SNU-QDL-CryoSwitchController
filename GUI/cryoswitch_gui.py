@@ -1,4 +1,7 @@
-_VERSION="v1.0" # nopep8
+_VERSION = "v1.1"  # nopep8
+
+# Changelog
+# 1.1: Removed numpy dependency
 
 import hashlib
 import json
@@ -6,7 +9,6 @@ import os
 import sys
 
 import __main__
-import numpy as np
 import pyqtgraph as pg
 from CryoSwitchController import Cryoswitch
 from PyQt5 import QtCore
@@ -33,6 +35,19 @@ def generate_checksum(string):
     md5_hash.update(string.encode("utf-8"))
     checksum = md5_hash.hexdigest()[:6]
     return checksum
+
+
+def python_arange(start, stop, step):
+    num = start
+    result = []
+    while num < stop:
+        result.append(num)
+        num += step
+    return result
+
+
+def python_ones(length):
+    return [1.0] * length
 
 
 script_filename = os.path.abspath(sys.executable)
@@ -92,48 +107,52 @@ except KeyError:
 
 def load_settings():
     """
-    by chatgpt, v2.1
+    by chatgpt, v2.2
     """
-    if os.path.exists(settings_file):
-        with open(settings_file, "r") as f:
-            settings = json.load(f)
+    try:
+        if os.path.exists(settings_file):
+            with open(settings_file, "r") as f:
+                settings = json.load(f)
 
-        # Check each setting for type correctness and correct key
-        for setting, value in list(settings.items()):
-            if setting not in default_types:
-                print(f"Misspelled or unknown parameter {setting}, marking as invalid")
-                if "_INVALID_PARAMETER" not in setting:
-                    settings[setting + "_INVALID_PARAMETER"] = settings.pop(setting)
-            else:
-                allowed_types = default_types[setting]
-
-                # If the allowed type is not a tuple, make it a tuple
-                if not isinstance(allowed_types, tuple):
-                    allowed_types = (allowed_types,)
-
-                if not any(isinstance(value, t) for t in allowed_types):
+            # Check each setting for type correctness and correct key
+            for setting, value in list(settings.items()):
+                if setting not in default_types:
                     print(
-                        f"Invalid type for {setting}, marking as invalid, resetting to default"
+                        f"Misspelled or unknown parameter {setting}, marking as invalid"
                     )
-                    settings[setting + "_INVALID_PARAMETER"] = settings.pop(setting)
-                    settings[setting] = default_settings[setting]
+                    if "_INVALID_PARAMETER" not in setting:
+                        settings[setting + "_INVALID_PARAMETER"] = settings.pop(setting)
+                else:
+                    allowed_types = default_types[setting]
 
-        # Check if any default setting is missing in the loaded settings
-        for setting, default_value in default_settings.items():
-            if setting not in settings:
-                print(f"Missing {setting}, adding to settings")
-                settings[setting] = default_value
+                    # If the allowed type is not a tuple, make it a tuple
+                    if not isinstance(allowed_types, tuple):
+                        allowed_types = (allowed_types,)
 
-        # Write back the settings after checking the types and missing values
-        with open(settings_file, "w") as f:
-            json.dump(settings, f, indent=4)
-    else:
-        print("Settings file not found, creating a new one with default settings")
-        with open(settings_file, "w") as f:
-            json.dump(default_settings, f, indent=4)
+                    if not any(isinstance(value, t) for t in allowed_types):
+                        print(
+                            f"Invalid type for {setting}, marking as invalid, resetting to default"
+                        )
+                        settings[setting + "_INVALID_PARAMETER"] = settings.pop(setting)
+                        settings[setting] = default_settings[setting]
 
+            # Check if any default setting is missing in the loaded settings
+            for setting, default_value in default_settings.items():
+                if setting not in settings:
+                    print(f"Missing {setting}, adding to settings")
+                    settings[setting] = default_value
+
+            # Write back the settings after checking the types and missing values
+            with open(settings_file, "w") as f:
+                json.dump(settings, f, indent=4)
+        else:
+            print("Settings file not found, creating a new one with default settings")
+            with open(settings_file, "w") as f:
+                json.dump(default_settings, f, indent=4)
+
+            settings = default_settings.copy()
+    except json.decoder.JSONDecodeError:
         settings = default_settings.copy()
-
     return settings
 
 
@@ -191,7 +210,7 @@ class GridButton(QPushButton):
                     )
                     / 1000
                 )
-            self.cs.internal_inferred_t[self.measurement_ID] = np.arange(
+            self.cs.internal_inferred_t[self.measurement_ID] = python_arange(
                 0,
                 0
                 + (
@@ -202,7 +221,7 @@ class GridButton(QPushButton):
                 1 / self.cs.sampling_freq,
             )
             self.cs.internal_limit_of_mA[self.measurement_ID] = (
-                np.ones(len(self.cs.internal_measured_A[self.measurement_ID]))
+                python_ones(len(self.cs.internal_measured_A[self.measurement_ID]))
                 * self.cs.internal_OCP_mA_tracked
                 / 1000
             )
