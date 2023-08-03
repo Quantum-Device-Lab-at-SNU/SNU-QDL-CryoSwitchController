@@ -1,10 +1,17 @@
 import time
-import matplotlib.pyplot as plt
 from libphox import Labphox
-import numpy as np
 import json
 import os
 
+# Equivalent to np.argmax
+def python_argmax(lst):
+    return max(range(len(lst)), key=lst.__getitem__)
+
+# Equivalent to np.linspace
+def python_linspace(start, stop, num):
+    step = (stop - start) / (num - 1)
+    return [start + i * step for i in range(num)]
+    
 class Cryoswitch:
 
     def __init__(self, debug=False, COM_port='', IP=None, SN=None, override_abspath=False):
@@ -30,7 +37,7 @@ class Cryoswitch:
             self.abs_path = os.path.dirname(__file__) + '\\'
 
         self.decimals = 2
-        self.plot = True
+        self.plot = False
         self.log_wav = True
         self.log_wav_dir = self.abs_path + r'data'
         self.align_edges = True
@@ -441,31 +448,6 @@ class Cryoswitch:
             current_profile = self.send_pulse()
             self.disable_output_channels()
 
-            if self.plot:
-                sampling_period = 1 / self.sampling_freq
-
-                if self.align_edges:
-                    edge = np.argmax(current_profile > 0)
-                    current_data = current_profile[edge:]
-                else:
-                    current_data = current_profile
-                data_points = len(current_data)
-                x_axis = np.linspace(0, data_points*sampling_period, data_points)*1000
-                plt.plot(x_axis, current_data)
-                if self.plot_polarization:
-                    plt.hlines(self.calculate_polarization_current_mA(), x_axis[0], x_axis[-1], colors='red', linestyles='dashed')
-                plt.xlabel('Time [ms]')
-                plt.ylabel('Current [mA]')
-                plt.title(time.strftime("%b-%m %H:%M:%S%p", time.gmtime()))
-                plt.suptitle('Port ' + port + '-' + str(contact) + ' ' + polarity_str)
-
-
-                if self.current_switch_model == 'R583423141':
-                    plt.ylim(0, 100)
-                elif self.current_switch_model == 'R573423600':
-                    plt.ylim(0, 200)
-                plt.grid()
-                plt.show()
 
             if self.pulse_logging:
                 self.log_pulse(port, contact, polarity, current_profile.max())
@@ -630,8 +612,6 @@ class Cryoswitch:
     def disconnect_all(self, port):
         for contact in range(1, 7):
             self.disconnect(port, contact)
-        if self.plot:
-            plt.legend([1, 2, 3, 4, 5, 6])
 
     def smart_connect(self, port, contact, force=False):
         states = self.get_switches_state()
