@@ -11,7 +11,7 @@ import sys
 import __main__
 import pyqtgraph as pg
 from CryoSwitchController import Cryoswitch
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
@@ -26,8 +26,32 @@ from PyQt5.QtWidgets import (
 )
 from pyqtgraph import PlotWidget
 
+
 # TODO: pulses >100ms will be silently set to 100ms - better way? change line edit when used
 # TODO: Connect ALL useful?
+class AboutDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super(AboutDialog, self).__init__(parent)
+
+        self.setWindowTitle("About")
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        self.nameLabel = QtWidgets.QLabel("Application Name: CryoSwitch Control Panel")
+        self.versionLabel = QtWidgets.QLabel(f"Version: {_VERSION}")
+        self.authorLabel = QtWidgets.QLabel("Authors: Cristobal Ferrer, Lars Freisem")
+        self.descriptionLabel = QtWidgets.QLabel(
+            "Description: GUI for the CryoSwitchController API"
+        )
+        self.creditsLabel = QtWidgets.QLabel("© 2023 QphoX")
+
+        layout.addWidget(self.nameLabel)
+        layout.addWidget(self.versionLabel)
+        layout.addWidget(self.authorLabel)
+        layout.addWidget(self.descriptionLabel)
+        layout.addWidget(self.creditsLabel)
+
+        self.setLayout(layout)
 
 
 def generate_checksum(string):
@@ -563,10 +587,17 @@ class CSCApp(QWidget):
         help_info_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         # help_info_label.setAlignment(Qt.AlignCenter)
         help_info_label.setStyleSheet("color: gray;")
-        grid.addWidget(help_info_label, 10, 0, 1, 8)
+        grid.addWidget(help_info_label, 10, 0, 1, 7)
+        about_button = QPushButton("About")
+        about_button.clicked.connect(self.show_about_dialog)
+        grid.addWidget(about_button, 10, 7, 1, 1)
         # self.setGeometry(300, 300, 800, 600)
         self.setWindowTitle(f"CryoSwitch Control Panel {_VERSION}")
         self.show()
+
+    def show_about_dialog(self):
+        dialog = AboutDialog()
+        dialog.exec_()
 
     def update_plot_data(self):
         try:
