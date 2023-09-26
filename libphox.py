@@ -3,12 +3,10 @@ import serial.tools.list_ports
 import time
 import json
 import socket
+import numpy as np
 import subprocess
 import os
 import logging
-
-def python_fromstring(byte_string):
-    return [int.from_bytes(byte_string[i:i+1], 'big') for i in range(0, len(byte_string))]
 
 class Labphox:
     _logger = logging.getLogger("libphox")
@@ -466,7 +464,7 @@ class Labphox:
             ##self.serial_com.flushInput()
             ##response = self.communication_handler('W:3:T:' + str(value) + ';', standard=False)
             response = self.packet_handler('W:3:T:' + str(value) + ';')
-            return python_fromstring(response)
+            return np.fromstring(response, dtype=np.uint8)
 
         elif self.compare_cmd(cmd, 'acquire'):
             response = self.communication_handler('W:3:Q:' + str(value) + ';')
