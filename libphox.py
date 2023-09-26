@@ -15,7 +15,7 @@ class Labphox:
 
     def __init__(self, port=None, debug=False, IP=None, cmd_logging=False, SN=None, HW_val=True):
         self.debug = debug
-        self.time_out = 30
+        self.time_out = 5
 
 
         if self.debug or cmd_logging:
@@ -55,15 +55,22 @@ class Labphox:
     def connect(self, HW_val=True):
         if self.USB_or_ETH == 1:
             if self.COM_port:
+                # TODO
                 pass
             elif self.board_SN:
                 for device in serial.tools.list_ports.comports():
                     if device.pid == 1812:
-                        self.serial_com = serial.Serial(device.device)
-                        if self.board_SN == self.utility_cmd('sn'):
-                            self.COM_port = device.device
-                            self.PID = device.pid
-                        self.serial_com.close()
+                        try:
+                            self.serial_com = serial.Serial(device.device)
+                            if self.board_SN == self.utility_cmd('sn'):
+                                self.COM_port = device.device
+                                self.PID = device.pid
+                                self.serial_com.close()
+                                break
+                            self.serial_com.close()
+                        except Exception as error:
+                            pass
+                            # print('Port' + str(device.device) + ' is already in use:', error)
 
             else:
                 for device in serial.tools.list_ports.comports():
@@ -236,54 +243,90 @@ class Labphox:
 
         return response
 
-    def communication_handler(self, cmd, standard=True):
-        response = ''
-        encoded_cmd = cmd.encode()
+    def TCP_communication_handler(self, encoded_cmd=None):
         reply = ''
+        with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as TCP_connection:
+            TCP_connection.connect((self.ETH_HOST, self.ETH_PORT))
+            TCP_connection.sendall(encoded_cmd)
+            packet = TCP_connection.recv(self.ETH_buff_size)
 
-        if self.USB_or_ETH == 1:
-            self.flush_input_buffer()
-            self.write(encoded_cmd)
+        try:
+            reply += packet.decode()
+        except:
+            print('Invalid packet character', packet)
 
-            initial_time = time.time()
+        reply = reply.split(';')[0]
+        return reply
+
+    def UDP_communication_handler(self, encoded_cmd=None):
+        reply = ''
+        with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as UDP_connection:
+            UDP_connection.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
             end = False
             while not end:
-                time.sleep(self.communication_handler_sleep_time)
-                if self.input_buffer():
-                    reply += self.read_buffer().decode()
-                if ';' in reply:
+                # time.sleep(self.communication_handler_sleep_time)
+                packet = UDP_connection.recvfrom(self.ETH_buff_size)[0]
+                if b';' in packet:
+                    reply += packet.split(b';')[0].decode()
                     end = True
+                else:
+                    try:
+                        reply += packet.decode()
+                    except:
+                        print('Invalid packet character', packet)
+                        break
 
-                elif (time.time() - initial_time) > self.time_out:
-                    raise Exception("LABPHOX time out exceeded", self.time_out, 's')
+            return reply
 
-            reply = reply.split(';')[0]
+    def USB_communication_handler(self, encoded_cmd=None):
+        reply = ''
+        self.flush_input_buffer()
+        self.write(encoded_cmd)
 
+        initial_time = time.time()
+        end = False
+        while not end:
+            time.sleep(self.communication_handler_sleep_time)
+            if self.input_buffer():
+                reply += self.read_buffer().decode()
+            if ';' in reply:
+                end = True
 
+            elif (time.time() - initial_time) > self.time_out:
+                raise Exception("LABPHOX time out exceeded", self.time_out, 's')
+
+        reply = reply.split(';')[0]
+        return reply
+
+    def standard_reply_parser(self, cmd, reply):
+        response = {'reply': reply, 'command': reply.split(':')[:-1], 'value': reply.split(':')[-1]}
+        if not self.validate_reply(cmd, response):
+            self.raise_value_mismatch(cmd, response)
+
+        return response
+
+    def communication_handler(self, cmd, standard=True, is_encoded=False):
+        response = ''
+        if is_encoded:
+            encoded_cmd = cmd
+        else:
+            encoded_cmd = cmd.encode()
+
+        if self.USB_or_ETH == 1:
+            reply = self.USB_communication_handler(encoded_cmd)
         elif self.USB_or_ETH == 2:
-            with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as UDP_connection:
-                UDP_connection.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
-                end = False
-                while not end:
-                    time.sleep(self.communication_handler_sleep_time)
-                    packet = UDP_connection.recvfrom(self.ETH_buff_size)[0]
-                    if b';' in packet:
-                        reply += packet.split(b';')[0].decode()
-                        end = True
-                    else:
-                        try:
-                            reply += packet.decode()
-                        except:
-                            print('Invalid packet character', packet)
-                            break
-
-                UDP_connection.close()
+            reply = self.UDP_communication_handler(encoded_cmd)
+        elif self.USB_or_ETH == 3:
+            reply = self.TCP_communication_handler(encoded_cmd)
+        else:
+            raise Exception("Invalid communication options USB_or_ETH=", self.USB_or_ETH)
 
         try:
             if standard:
-                response = {'reply': reply, 'command': reply.split(':')[:-1], 'value': reply.split(':')[-1]}
-                if not self.validate_reply(cmd, response):
-                    self.raise_value_mismatch(cmd, response)
+                if is_encoded:
+                    response = self.standard_reply_parser(cmd=cmd.decode(), reply=reply)
+                else:
+                    response = self.standard_reply_parser(cmd=cmd, reply=reply)
             else:
                 response = reply
         except:
@@ -292,10 +335,7 @@ class Labphox:
         if self.debug:
             self.debug_func(cmd, response)
 
-
-
         return response
-
 
     def validate_reply(self, cmd, response):
         stripped = cmd.strip(';').split(':')
@@ -308,45 +348,51 @@ class Labphox:
 
         return match
 
-    def packet_handler(self, cmd, end_sequence=b'\x00\xff\x00\xff'):
+    def USB_packet_handler(self, encoded_cmd, end_sequence):
         reply = b''
-        encoded_cmd = cmd.encode()
+        self.flush_input_buffer()
+        self.write(encoded_cmd)
 
-        if self.USB_or_ETH == 1:
-            self.flush_input_buffer()
-            self.write(encoded_cmd)
+        initial_time = time.time()
+        end = False
+        while not end:
+            time.sleep(self.packet_handler_sleep_time)
+            if self.input_buffer():
+                reply += self.read_buffer()
+            if end_sequence in reply[-5:]:
+                end = True
 
-            initial_time = time.time()
+            elif (time.time() - initial_time) > self.time_out:
+                raise Exception("LABPHOX time out exceeded", self.time_out, 's')
+
+        reply = reply.replace(end_sequence, b'').replace(encoded_cmd, b'')
+        return reply
+
+    def UDP_packet_handler(self, encoded_cmd, end_sequence):
+        reply = b''
+        with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as s:
+            s.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
             end = False
             while not end:
                 time.sleep(self.packet_handler_sleep_time)
-                if self.input_buffer():
-                    reply += self.read_buffer()
+                packet = s.recvfrom(self.ETH_buff_size)[0]
+                reply += packet
                 if end_sequence in reply[-5:]:
                     end = True
 
-                elif (time.time() - initial_time) > self.time_out:
-                    raise Exception("LABPHOX time out exceeded", self.time_out, 's')
+        reply = reply.replace(end_sequence, b'').replace(encoded_cmd, b'')
+        return reply[7:]
 
-            reply = reply.replace(end_sequence, b'').replace(encoded_cmd, b'')
+    def packet_handler(self, cmd, end_sequence=b'\x00\xff\x00\xff'):
+        encoded_cmd = cmd.encode()
 
+        if self.USB_or_ETH == 1:
+            reply = self.USB_packet_handler(encoded_cmd, end_sequence)
             return reply
 
         elif self.USB_or_ETH == 2:
-            with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as s:
-                s.sendto(encoded_cmd, (self.ETH_HOST, self.ETH_PORT))
-                end = False
-                while not end:
-                    time.sleep(self.packet_handler_sleep_time)
-                    packet = s.recvfrom(self.ETH_buff_size)[0]
-                    reply += packet
-                    if end_sequence in reply[-5:]:
-                        end = True
-
-                s.close()
-
-            reply = reply.replace(end_sequence, b'').replace(encoded_cmd, b'')
-            return reply[7:]
+            reply = self.UDP_packet_handler(encoded_cmd, end_sequence)
+            return reply
 
     def raise_value_mismatch(self, cmd, response):
         print('Command mismatch!')
@@ -517,12 +563,6 @@ class Labphox:
 
         return response
 
-    def scanI2C(self):
-        self.write(b'R:4:T:1;')
-        time.sleep(5)
-        res = self.read_buffer()
-        print(res.decode().strip('-').split('&'))
-
     def IO_expander_cmd(self, cmd, port='A', value=0):
         response = None
         if self.compare_cmd(cmd, 'connect'):
@@ -549,6 +589,9 @@ class Labphox:
 
         elif self.compare_cmd(cmd, 'boot'):
             response = self.communication_handler('W:7:B:;')
+
+        elif self.compare_cmd(cmd, 'soft_reset'):
+            response = self.communication_handler('W:7:S:;')
 
         return response
 
@@ -664,8 +707,9 @@ class Labphox:
                     poll = process.poll()
 
             print('Flashing time', round(exc_time, 2), 's')
+            print('Flash ended! Please disconnect the device.')
 
 
 if __name__ == "__main__":
-    cryoswitch = Labphox(debug=True, IP='192.168.1.100')  ##IP='192.168.1.6'
+    cryoswitch = Labphox(debug=True, IP='192.168.1.101')
 

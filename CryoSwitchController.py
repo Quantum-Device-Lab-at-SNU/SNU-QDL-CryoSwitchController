@@ -32,7 +32,7 @@ class Cryoswitch:
         self.current_switch_model = ''
         
         if override_abspath:
-            self.abs_path = override_abspath+'\\'
+            self.abs_path = override_abspath + '\\'
         else:
             self.abs_path = os.path.dirname(__file__) + '\\'
 
@@ -83,40 +83,44 @@ class Cryoswitch:
 
     def __constants(self):
         file = open(self.constants_file_name)
-        constants = json.load(file)[self.HW_rev]
+        constants = json.load(file)
         file.close()
 
-        self.ADC_12B_res = constants['ADC_12B_res']
-        self.ADC_8B_res = constants['ADC_8B_res']
+        if self.HW_rev in constants.keys():
+            constants = constants[self.HW_rev]
+            self.ADC_12B_res = constants['ADC_12B_res']
+            self.ADC_8B_res = constants['ADC_8B_res']
 
-        self.bv_R1 = constants['bv_R1']
-        self.bv_R2 = constants['bv_R2']
-        self.bv_ADC = constants['bv_ADC']
+            self.bv_R1 = constants['bv_R1']
+            self.bv_R2 = constants['bv_R2']
+            self.bv_ADC = constants['bv_ADC']
 
-        self.converter_divider = constants['converter_divider']
-        self.converter_ADC = constants['converter_ADC']
+            self.converter_divider = constants['converter_divider']
+            self.converter_ADC = constants['converter_ADC']
 
-        self.converter_VREF = constants['converter_VREF']
-        self.converter_R1 = constants['converter_R1']
-        self.converter_R2 = constants['converter_R2']
-        self.converter_Rf = constants['converter_Rf']
-        self.converter_DAC_lower_bound = constants['converter_DAC_lower_bound']
-        self.converter_DAC_upper_bound = constants['converter_DAC_upper_bound']
+            self.converter_VREF = constants['converter_VREF']
+            self.converter_R1 = constants['converter_R1']
+            self.converter_R2 = constants['converter_R2']
+            self.converter_Rf = constants['converter_Rf']
+            self.converter_DAC_lower_bound = constants['converter_DAC_lower_bound']
+            self.converter_DAC_upper_bound = constants['converter_DAC_upper_bound']
 
-        self.OCP_gain = constants['OCP_gain']
+            self.OCP_gain = constants['OCP_gain']
 
-        self.current_sense_R = constants['current_sense_R']
-        self.current_gain = constants['current_gain']
+            self.current_sense_R = constants['current_sense_R']
+            self.current_gain = constants['current_gain']
 
-        self.sampling_freq = 28000
+            self.sampling_freq = 28000
 
-        if self.HW_rev == 'HW_Ver. 3':
-            ref_values = []
-            for it in range(5):
-                ref_values.append(self.get_V_ref())
-            self.measured_adc_ref = sum(ref_values) / len(ref_values)
+            if self.HW_rev == 'HW_Ver. 3':
+                ref_values = []
+                for it in range(5):
+                    ref_values.append(self.get_V_ref())
+                self.measured_adc_ref = sum(ref_values) / len(ref_values)
+            else:
+                self.measured_adc_ref = self.labphox.adc_ref
         else:
-            self.measured_adc_ref = self.labphox.adc_ref
+            print(f'Failed to load constants, HW revision {self.HW_rev} not int {constants.keys()}')
 
     def set_FW_upgrade_mode(self):
         self.labphox.reset_cmd('boot')
@@ -156,6 +160,12 @@ class Cryoswitch:
     def disable_3V3(self):
         self.labphox.gpio_cmd('EN_3V3', 0)
 
+    def standby(self):
+        self.set_output_voltage(5)
+        self.disable_negative_supply()
+        self.disable_3V3()
+        self.disable_5V()
+
     def get_converter_voltage(self):
         converter_gain = self.measured_adc_ref * self.converter_divider / self.ADC_12B_res
         self.labphox.ADC_cmd('select', self.converter_ADC)
@@ -171,7 +181,7 @@ class Cryoswitch:
         time.sleep(self.wait_time)
         bias_voltage = self.labphox.ADC_cmd('get')*bias_gain-bias_offset
 
-        return bias_voltage
+        return round(bias_voltage, self.decimals)
 
     def check_voltage(self, measured_voltage, target_voltage, tolerance=0.1, pre_str=''):
         error = abs((measured_voltage-target_voltage)/target_voltage)
