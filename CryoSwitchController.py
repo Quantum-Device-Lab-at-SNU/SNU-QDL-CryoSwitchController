@@ -83,6 +83,7 @@ class Cryoswitch:
             constants = constants[self.HW_rev]
             self.ADC_12B_res = constants['ADC_12B_res']
             self.ADC_8B_res = constants['ADC_8B_res']
+            self.ADC_cal_ref = constants['ADC_cal_ref']
 
             self.bv_R1 = constants['bv_R1']
             self.bv_R2 = constants['bv_R2']
@@ -97,19 +98,29 @@ class Cryoswitch:
             self.converter_Rf = constants['converter_Rf']
             self.converter_DAC_lower_bound = constants['converter_DAC_lower_bound']
             self.converter_DAC_upper_bound = constants['converter_DAC_upper_bound']
+            self.converter_correction_codes = constants['converter_correction_codes']
 
             self.OCP_gain = constants['OCP_gain']
 
             self.current_sense_R = constants['current_sense_R']
             self.current_gain = constants['current_gain']
+            self.polarization_params = constants['current_gain']
 
             self.sampling_freq = 28000
 
-            if self.HW_rev == 'HW_Ver. 3':
+            if constants['calibrate_ADC']:
+                self.labphox.ADC3_cmd('start')
+                time.sleep(0.1)
                 ref_values = []
                 for it in range(5):
                     ref_values.append(self.get_V_ref())
-                self.measured_adc_ref = sum(ref_values) / len(ref_values)
+                measured_ref = sum(ref_values) / len(ref_values)
+
+                if 3.1 < measured_ref < 3.5:
+                    self.measured_adc_ref = measured_ref
+                else:
+                    print(f'Measured ADC ref {measured_ref}V outside of range')
+                    self.measured_adc_ref = self.labphox.adc_ref
             else:
                 self.measured_adc_ref = self.labphox.adc_ref
         else:
@@ -155,9 +166,14 @@ class Cryoswitch:
 
     def standby(self):
         self.set_output_voltage(5)
+        self.disable_converter()
         self.disable_negative_supply()
         self.disable_3V3()
         self.disable_5V()
+
+    def calculate_error(self, measured, set):
+        error = abs((measured - set) / set)
+        return error
 
     def get_converter_voltage(self):
         converter_gain = self.measured_adc_ref * self.converter_divider / self.ADC_12B_res
@@ -177,7 +193,7 @@ class Cryoswitch:
         return round(bias_voltage, self.decimals)
 
     def check_voltage(self, measured_voltage, target_voltage, tolerance=0.1, pre_str=''):
-        error = abs((measured_voltage-target_voltage)/target_voltage)
+        error = self.calculate_error(measured_voltage, target_voltage)
         if error > tolerance:
             print(pre_str, 'failed to set voltage, measured voltage', round(measured_voltage, self.decimals))
             return False
@@ -200,11 +216,15 @@ class Cryoswitch:
         return temp
 
     def get_V_ref(self):
-        self.labphox.ADC3_cmd('select', 8)
-        time.sleep(0.2)
-        Ref_2V5 = self.labphox.ADC3_cmd('get')
-        ADC_ref = 2.5*4095/Ref_2V5
-        return round(ADC_ref, 4)
+        if self.ADC_cal_ref:
+            self.labphox.ADC3_cmd('select', 8)
+            time.sleep(0.2)
+            Ref_2V5 = self.labphox.ADC3_cmd('get')
+            ADC_ref = 2.5 * self.ADC_12B_res / Ref_2V5
+            return round(ADC_ref, 4)
+        else:
+            print('Calibration reference is not available in this HW rev')
+            return None
 
     def enable_negative_supply(self):
         self.labphox.gpio_cmd('EN_CHGP', 1)
@@ -219,10 +239,11 @@ class Cryoswitch:
         return self.get_bias_voltage()
 
     def calculate_output_code(self, Vout):
-        code = int((self.converter_VREF - (
+        code = ((self.converter_VREF - (
                     Vout - self.converter_VREF * (1 + (self.converter_R1 / self.converter_R2))) * (
                                 self.converter_Rf / self.converter_R1)) * (self.ADC_12B_res / self.measured_adc_ref))
 
+        code = int((code / self.converter_correction_codes[0]) - self.converter_correction_codes[1])
         if code < self.converter_DAC_lower_bound or code > self.converter_DAC_upper_bound:
             print('Wrong DAC value, dont mess with the DAC. DAC angry.')
             return False
@@ -250,8 +271,11 @@ class Cryoswitch:
                     self.check_voltage(measured_voltage, Vout, tolerance=tolerance, pre_str='CONVERTER STATUS:')
 
                 return measured_voltage
+            else:
+                print(f'Failed to calculate output code')
+                return False
         else:
-            print('Voltage outside of range (5-28V)')
+            print('Voltage outside of range (5-30V)')
 
         return False
 
@@ -278,7 +302,8 @@ class Cryoswitch:
         self.labphox.IO_expander_cmd('off')
 
     def enable_converter(self, init_voltage=None):
-        self.labphox.DAC_cmd('set', DAC=1, value=1500)
+        code = self.calculate_output_code(5)
+        self.labphox.DAC_cmd('set', DAC=1, value=code)
         self.labphox.DAC_cmd('on', DAC=1)
         self.labphox.gpio_cmd('PWR_EN', 1)
         self.labphox.gpio_cmd('DCDC_EN', 1)
@@ -287,7 +312,6 @@ class Cryoswitch:
             init_voltage = self.converter_voltage
 
         self.set_output_voltage(init_voltage)
-
 
     def disable_converter(self):
         self.labphox.gpio_cmd('DCDC_EN', 0)
@@ -303,15 +327,16 @@ class Cryoswitch:
 
     def reset_OCP(self):
         self.labphox.gpio_cmd('CHOPPING_EN', 1)
+        time.sleep(0.2)
         self.labphox.gpio_cmd('CHOPPING_EN', 0)
 
     def set_OCP_mA(self, OCP_value):
-        if 1 <= OCP_value <= 500:
+        if 1 <= OCP_value <= 300:
             DAC_reg = int(OCP_value*(self.current_sense_R*self.current_gain*self.ADC_12B_res/(self.OCP_gain*1000*self.measured_adc_ref)))
             if 0 < DAC_reg < 4095:
                 self.labphox.DAC_cmd('set', DAC=2, value=DAC_reg)
                 return None
-        print('Over current protection outside of range 1-500mA')
+        print('Over current protection outside of range 1-300mA')
         return None
 
     def get_OCP_status(self):
@@ -337,9 +362,9 @@ class Cryoswitch:
         if 1 <= ms_duration <= 100:
             self.pulse_duration_ms = ms_duration
             pulse_offset = 100
-            self.labphox.timer_cmd('duration', round(ms_duration*100 + pulse_offset))
+            self.labphox.timer_cmd('duration', round(ms_duration * 100 + pulse_offset))
             if self.verbose:
-                print('Pulse duration set to', str(ms_duration) + 'ms')
+                print(f'Pulse duration set to {ms_duration} ms')
 
         else:
             print('Pulse duration outside of range (1-100ms)')
@@ -347,25 +372,25 @@ class Cryoswitch:
     def set_sampling_frequency_khz(self, f_khz):
         if 10 <= f_khz <= 100:
             self.labphox.timer_cmd('sampling', int(84000/f_khz))
-            self.sampling_freq = f_khz*1000
+            self.sampling_freq = f_khz * 1000
         else:
-            print('Sampling frequency outside of range')
+            print('Sampling frequency outside of range (10-100khz)')
 
     def calculate_polarization_current_mA(self, voltage=None, resistance=None):
         if not voltage:
             voltage = self.MEASURED_converter_voltage
 
         if self.converter_voltage <= 10:
-            th_current = (voltage - 2.2) / 4700 + (voltage - 0.2 + 5) / 3000 + (voltage - 3) / 4700
+            th_current = (voltage - 2.2) / self.polarization_params[0] + (voltage - 0.2 + 5) / self.polarization_params[1] + (voltage - 3) / self.polarization_params[2]
         elif self.converter_voltage < 15:
-            th_current = (voltage - 2.2) / 4700 + (voltage - 0.2) / 3000 + (voltage - 3) / 4700
+            th_current = (voltage - 2.2) / self.polarization_params[0] + (voltage - 0.2) / self.polarization_params[1] + (voltage - 3) / self.polarization_params[2]
         else:
-            th_current = (voltage - 2.2) / 4700 + (voltage - 10) / 1000 + (voltage - 3) / 4700
+            th_current = (voltage - 2.2) / self.polarization_params[0] + (voltage - 10) / self.polarization_params[1] + (voltage - 3) / self.polarization_params[2]
 
         if resistance:
             th_current += voltage / resistance
 
-        return round(th_current*1000, 1)
+        return round(th_current * 1000, 1)
 
     def send_pulse(self):
         if not self.get_power_status():
@@ -377,7 +402,6 @@ class Cryoswitch:
         current_data = self.labphox.application_cmd('pulse', 1)
 
         return current_data*current_gain
-
 
     def select_switch_model(self, model='R583423141'):
         if model.upper() == 'R583423141'.upper():
@@ -420,7 +444,6 @@ class Cryoswitch:
         else:
             return True
 
-
     def select_output_channel(self, port, number, polarity):
         if 0 < number < 7:
             number = number - 1
@@ -431,7 +454,7 @@ class Cryoswitch:
 
             return self.validate_selected_channel(number, polarity, reply)
         else:
-            print('SW out of range')
+            print('Contact out of range')
             return None
 
     def select_and_pulse(self, port, contact, polarity):
@@ -468,7 +491,6 @@ class Cryoswitch:
                 plt.ylabel('Current [mA]')
                 plt.title(time.strftime("%b-%m %H:%M:%S%p", time.gmtime()))
                 plt.suptitle('Port ' + port + '-' + str(contact) + ' ' + polarity_str)
-
 
                 if self.current_switch_model == 'R583423141':
                     plt.ylim(0, 100)
@@ -534,14 +556,12 @@ class Cryoswitch:
         else:
             return None
 
-
     def log_waveform(self, port, contact, polarity, current_profile):
         name = self.log_wav_dir + '\\' + str(int(time.time())) + '_' + str(
             self.MEASURED_converter_voltage) + 'V_' + str(port) + str(contact) + '_' + str(polarity) + '.json'
         waveform = {'time':time.time(), 'voltage': self.MEASURED_converter_voltage, 'port': port, 'contact': contact, 'polarity':polarity, 'SF': self.sampling_freq,'data':list(current_profile)}
         with open(name, 'w') as outfile:
             json.dump(waveform, outfile, indent=4, sort_keys=True)
-
 
     def log_pulse(self, port, contact, polarity, max_current):
         if polarity:
@@ -592,7 +612,7 @@ class Cryoswitch:
 
             print(raw_data[0] + ', ' + time.strftime("%a %b-%m %H:%M:%S%p", pulse_time) + ' ' + extra_text)
 
-    def connect(self, port, contact):
+    def validate_port_contact(self, port, contact):
         if port == 'A' and self.ports_enabled >= 1:
             send_pulse = True
         elif port == 'B' and self.ports_enabled >= 2:
@@ -602,40 +622,39 @@ class Cryoswitch:
         elif port == 'D' and self.ports_enabled >= 4:
             send_pulse = True
         else:
-            print('Port', port, 'not enabled')
-            return None
+            print(f'Port {port} not enabled')
+            return False
 
-        if send_pulse and (0 < contact < 7):
+        if 0 < contact < 7:
+            return send_pulse
+        else:
+            return False
+
+    def connect(self, port, contact):
+        send_pulse = self.validate_port_contact(port, contact)
+
+        if send_pulse:
             if self.debug:
-                print('Connecting port:', port, 'SW:', contact)
+                print(f'Connecting Port:{port}, Contact {contact}')
 
             current_profile = self.select_and_pulse(port, contact, 1)
             return current_profile
         else:
-            print('Out of range: Port', port)
+            print(f'Port or contact out of range: Port {port}, Contact {contact}')
             return None
 
     def disconnect(self, port, contact):
-        if port == 'A' and self.ports_enabled >= 1:
-            send_pulse = True
-        elif port == 'B' and self.ports_enabled >= 2:
-            send_pulse = True
-        elif port == 'C' and self.ports_enabled >= 3:
-            send_pulse = True
-        elif port == 'D' and self.ports_enabled >= 4:
-            send_pulse = True
-        else:
-            print('Port', port, 'not enabled')
-            return None
+        send_pulse = self.validate_port_contact(port, contact)
 
-        if send_pulse and (0 < contact < 7):
+        if send_pulse:
             if self.debug:
-                print('Disconnecting port:', port, 'SW:', contact)
+                print(f'Connecting Port:{port}, Contact {contact}')
 
             current_profile = self.select_and_pulse(port, contact, 0)
             return current_profile
         else:
-            print('Out of range: Port', port)
+            print(f'Port or contact out of range: Port {port}, Contact {contact}')
+            return None
 
     def disconnect_all(self, port):
         for contact in range(1, 7):
@@ -664,6 +683,26 @@ class Cryoswitch:
 
         return None
 
+    def test_internals(self, voltage=10):
+        last_voltage = self.converter_voltage
+        self.set_output_voltage(voltage)
+
+        self.labphox.application_cmd('test_circuit', 1)
+        voltage = self.MEASURED_converter_voltage
+        expected_current = ((voltage - 2.2) / 10000 + (voltage - 3) / 4700 + voltage / 480) * 1000
+        test_current = self.send_pulse()
+        self.labphox.application_cmd('test_circuit', 0)
+
+        if self.plot:
+            plt.plot(test_current)
+            plt.hlines(expected_current, 0, len(test_current), colors='red', linestyles='dashed')
+            plt.xlabel('Sample')
+            plt.ylabel('Current [mA]')
+
+        self.set_output_voltage(last_voltage)
+
+        return test_current
+
     def get_power_status(self):
         return self.labphox.gpio_cmd('PWR_STATUS')
 
@@ -672,7 +711,7 @@ class Cryoswitch:
 
     def get_ip(self):
         add = self.labphox.ETHERNET_cmd('get_ip_str')
-        print('IP:', add)
+        print(f'IP: {add}')
         return add
 
     def set_sub_net_mask(self, mask='255.255.255.0'):
@@ -680,15 +719,13 @@ class Cryoswitch:
 
     def get_sub_net_mask(self):
         mask = self.labphox.ETHERNET_cmd('get_mask_str')
-        print('Subnet Mask:', mask)
+        print(f'Subnet Mask: {mask}')
         return mask
 
     def start(self):
         if self.verbose:
             print('Initialization...')
         self.labphox.ADC_cmd('start')
-        if '3' in self.HW_rev:
-            self.labphox.ADC3_cmd('start')
 
         self.enable_3V3()
         self.enable_5V()
