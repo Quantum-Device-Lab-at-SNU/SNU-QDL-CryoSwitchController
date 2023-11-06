@@ -88,6 +88,7 @@ class Labphox:
                 self.utility_cmd('info')
                 print('Connected to ' + self.name + ' on COM port ' + self.COM_port + ', PID:',
                       str(self.PID) + ', SerialN: ' + str(self.board_SN) + ', Channels:' + str(self.N_channel))
+                print(self.HW, ', FW_Ver.', self.board_FW)
             except:
                 print('ERROR: Couldn\'t connect via serial')
 
@@ -100,7 +101,7 @@ class Labphox:
             self.utility_cmd('info')
             print('Connected to ' + self.name + ', IP:',
                   str(self.ETH_HOST) + ', SerialN: ' + str(self.board_SN) + ', Channels:' + str(self.N_channel))
-
+            print(self.HW, ', FW_Ver.', self.board_FW)
         if not self.board_SN:
             raise Exception(
                 "Couldn\'t connect, please check that the device is properly connected or try providing a valid SN, COM port or IP number")
@@ -472,6 +473,9 @@ class Labphox:
         elif self.compare_cmd(cmd, 'voltage'):
             response = self.communication_handler('W:3:V:' + str(value) + ';')
 
+        elif self.compare_cmd(cmd, 'test_circuit'):
+            response = self.communication_handler('W:3:P:' + str(value) + ';')
+
         return response
 
     def timer_cmd(self, cmd, value=0):
@@ -709,5 +713,5 @@ class Labphox:
 
 
 if __name__ == "__main__":
-    cryoswitch = Labphox(debug=True, IP='192.168.1.101')
+    labphox = Labphox(debug=True, IP='192.168.1.101')
 
