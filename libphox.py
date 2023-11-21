@@ -11,7 +11,7 @@ import logging
 class Labphox:
     _logger = logging.getLogger("libphox")
 
-    def __init__(self, port=None, debug=False, IP=None, cmd_logging=False, SN=None, HW_val=True):
+    def __init__(self, port=None, debug=False, IP=None, cmd_logging=False, SN=None, HW_val=False):
         self.debug = debug
         self.time_out = 5
 
@@ -507,6 +507,13 @@ class Labphox:
 
         elif self.compare_cmd(cmd, 'get'):
             response = self.communication_handler('W:4:G:;')
+            return int(response['value'])
+
+        elif self.compare_cmd(cmd, 'interrupt'):  ##Enable interrupt mode
+            response = self.communication_handler('W:4:I:' + str(value) + ';')
+
+        elif self.compare_cmd(cmd, 'buffer'):  ##Enable interrupt mode
+            response = self.communication_handler('W:4:B:' + str(value) + ';')
             return int(response['value'])
 
         return response
