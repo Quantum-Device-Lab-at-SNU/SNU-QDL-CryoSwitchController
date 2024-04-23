@@ -250,11 +250,12 @@ class Cryoswitch:
         return self.get_bias_voltage()
 
     def calculate_output_code(self, Vout):
+        Vout = (Vout - self.converter_correction_codes[1]) / self.converter_correction_codes[0]
         code = ((self.converter_VREF - (
                     Vout - self.converter_VREF * (1 + (self.converter_R1 / self.converter_R2))) * (
                                 self.converter_Rf / self.converter_R1)) * (self.ADC_12B_res / self.measured_adc_ref))
 
-        code = int((code / self.converter_correction_codes[0]) - self.converter_correction_codes[1])
+        code = int(code)
         if code < self.converter_DAC_lower_bound or code > self.converter_DAC_upper_bound:
             print('Wrong DAC value, dont mess with the DAC. DAC angry.')
             return False
@@ -285,7 +286,7 @@ class Cryoswitch:
                 print(f'Failed to calculate output code')
                 return False
         else:
-            print('Voltage outside of range (5-30V)')
+            print(f'Voltage outside of range ({self.converter_output_voltage_range[0]}V-{self.converter_output_voltage_range[1]}V)')
 
         return False
 
@@ -401,23 +402,24 @@ class Cryoswitch:
         elif self.converter_voltage < 15:
             th_current = (voltage - 2.2) / self.polarization_params[0] + (voltage - 0.2) / self.polarization_params[1] + (voltage - 3) / self.polarization_params[2]
         else:
-            th_current = (voltage - 2.2) / self.polarization_params[0] + (voltage - 10) / self.polarization_params[1] + (voltage - 3) / self.polarization_params[2]
+            th_current = (voltage - 2.2) / self.polarization_params[0] + (voltage - 10) / 1000 + (voltage - 3) / self.polarization_params[2]
 
         if resistance:
             th_current += voltage / resistance
 
         return round(th_current * 1000, 1)
 
+    def get_current_gain(self):
+        return 1000 * self.measured_adc_ref / (self.current_sense_R * self.current_gain * self.ADC_8B_res)
+
     def send_pulse(self):
         if not self.get_power_status():
             print('WARNING: Timing protection triggered, resetting...')
             self.reset_output_supervisor()
 
-        current_gain = 1000 * self.measured_adc_ref / (self.current_sense_R * self.current_gain * self.ADC_8B_res)
-
         current_data = self.labphox.application_cmd('pulse', 1)
 
-        return current_data*current_gain
+        return current_data * self.get_current_gain()
 
     def select_switch_model(self, model='R583423141'):
         if model.upper() == 'R583423141'.upper():
