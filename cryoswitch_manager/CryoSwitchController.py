@@ -1,6 +1,6 @@
 import time
 import matplotlib.pyplot as plt
-from libphox import Labphox
+from .libphox import Labphox
 import numpy as np
 import json
 import os

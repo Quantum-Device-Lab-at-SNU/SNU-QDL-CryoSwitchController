@@ -1,4 +1,4 @@
-from CryoSwitchController import Cryoswitch
+from .CryoSwitchController import Cryoswitch
 import time
 
 class CryoSwitchConfig:

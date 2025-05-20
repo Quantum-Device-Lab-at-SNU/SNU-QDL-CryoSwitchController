@@ -1,4 +1,4 @@
-from CryoSwitchManager import CryoSwitchManager
+from cryoswitch_manager import CryoSwitchManager
 
 cryoswitch_config_dr1 = [
     {

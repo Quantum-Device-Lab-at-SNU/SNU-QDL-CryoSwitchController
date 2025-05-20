@@ -75,3 +75,9 @@ A basic implementation of the CryoSwitchController class can be done with the fo
         Disables the chopping function. When an overcurrent condition occurs, the controller will disable the output voltage. Please refer to the installation guide for further information.
 
 
+## License
+
+This project is licensed under the MIT License © Quantum Device Lab at SNU.
+
+It also includes code originally developed by QphoX B.V., licensed under the BSD 4-Clause License.  
+See the [LICENSE](./LICENSE) file for details.
