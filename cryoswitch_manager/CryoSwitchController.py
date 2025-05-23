@@ -760,13 +760,8 @@ class Cryoswitch:
         self.enable_3V3()
         self.enable_5V()
         self.enable_OCP()
-        self.set_OCP_mA(80)
         self.enable_chopping()
-
-        self.set_pulse_duration_ms(15)
-
         self.enable_converter()
-        # self.set_output_voltage(5)
 
         time.sleep(1)
         self.enable_output_channels()

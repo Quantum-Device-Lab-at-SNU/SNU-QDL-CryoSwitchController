@@ -129,14 +129,22 @@ class Cryo2x2SwitchConfig(CryoSwitchConfig):
 class CryoSwitchManager:
     def __init__(
         self, switch_config_list: list[dict], COM_port: str = "COM5",
-        initialize_all: bool = True, control_mode: str = "cryo"
+        initialize_all: bool = True, control_mode: str = "cryo",
+        cryo_output_voltage: float = 10.0, room_temp_output_voltage = 28.0,
+        ocp_mA: float = 130.0, pulse_duration_ms: int = 100,
     ):
+        # set parameters
+        self._cryo_output_voltage = cryo_output_voltage
+        self._room_temp_output_voltage = room_temp_output_voltage
 
         # establish connection to the QPhoX CryoSwitch Controller
         self.controller = Cryoswitch(COM_port = COM_port)
         self.controller.start()
 
         self.control_mode = control_mode
+        self.ocp_mA = ocp_mA
+        self.pulse_duration_ms = pulse_duration_ms
+
         self._switch_list = []
 
         for switch_config in switch_config_list:
@@ -145,7 +153,7 @@ class CryoSwitchManager:
             controller_port = switch_config["controller_port"]
             position = switch_config["controller_port"] if "controller_port" in switch_config.keys() else None
             self.add_switch(name, switch_model, controller_port, position=position)
-        
+
         if initialize_all:
             self.initialize_all()
 
@@ -172,7 +180,7 @@ class CryoSwitchManager:
         else:
             raise ValueError(f"The switch model {switch_model} is currently unsupported.")
         self._switch_list.append(switch)
-        setattr(self, name, switch)           
+        setattr(self, name, switch)
 
     def get_internal_temperature(self) -> float:
         """Get internal temperature of the controller
@@ -192,26 +200,46 @@ class CryoSwitchManager:
                 report_str += ', '.join(["↔".join(_connectivity) for _connectivity in switch.connectivity])
             print(report_str)
 
-    def set_OCP_mA(self, OCP_value: float):
-        self.controller.set_OCP_mA(OCP_value)
+    @property
+    def ocp_mA(self):
+        return self._ocp_mA
 
-    def set_output_voltage(self, Vout: float):
-        self.controller.set_output_voltage(Vout)
+    @ocp_mA.setter
+    def ocp_mA(self, ocp_value: float):
+        self.controller.set_OCP_mA(ocp_value)
+        self._ocp_mA = ocp_value
 
-    def set_pulse_duration_ms(self, ms_duration):
+    @property
+    def output_voltage(self):
+        return self._output_voltage
+
+    @output_voltage.setter
+    def output_voltage(self, v_out: float):
+        self.controller.set_output_voltage(v_out)
+        self._output_voltage = v_out
+   
+    @property
+    def pulse_duration_ms(self):
+        return self._pulse_duration_ms
+
+    @pulse_duration_ms.setter
+    def pulse_duration_ms(self, ms_duration):
         self.controller.set_pulse_duration_ms(ms_duration)
+        self._pulse_duration_ms = ms_duration
 
-    def set_room_temp_mode(self):
+    def set_room_temp_control_mode(self):
         """
-        Set the output voltage to 24V for room temp operation
+        Set the output voltage for room temp operation
         """
-        self.set_output_voltage(24)
+        self.output_voltage = self._room_temp_output_voltage
+        self._control_mode = "room_temp"
 
-    def set_cryo_mode(self):
+    def set_cryo_control_mode(self):
         """
-        Set the output voltage to 5V for cryo operation
+        Set the output voltage for cryo operation
         """
-        self.set_output_voltage(5)
+        self.output_voltage = self._cryo_output_voltage
+        self._control_mode = "cryo"
 
     def initialize_all(self) -> None:
         for switch in self.switch_list:
@@ -229,9 +257,9 @@ class CryoSwitchManager:
     @control_mode.setter
     def control_mode(self, mode: str):
         if mode == "cryo":
-            self.set_cryo_mode()
+            self.set_cryo_control_mode()
         elif mode == "room temp":
-            self.set_room_temp_mode()
+            self.set_room_temp_control_mode()
         else:
             raise ValueError(
                 f"The specified control mode {mode} is not available. Control mode must be either 'cryo' or 'room temp'."
@@ -245,3 +273,20 @@ class CryoSwitchManager:
             list[CryoSwitchConfig]: list of `CryoSwitchConfig` each representing an available cryo switch.
         """
         return self._switch_list
+
+    @property
+    def cryo_output_voltage(self):
+        return self._cryo_output_voltage
+
+    @cryo_output_voltage.setter
+    def cryo_output_voltage(self, val: float):
+        self._cryo_output_voltage = val
+
+    @property
+    def room_temp_output_voltage(self):
+        return self._room_temp_output_voltage
+    
+    @room_temp_output_voltage.setter
+    def room_temp_output_voltage(self, val: float):
+        self._room_temp_output_voltage = val
+
